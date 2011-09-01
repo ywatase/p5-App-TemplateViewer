@@ -6,7 +6,12 @@ readme_markdown_from 'lib/App/TemplateViewer.pm';
 readme_pod_from 'lib/App/TemplateViewer.pm';
 githubmeta;
 
-# requires '';
+requires 'Text::Xslate';
+requires 'Plack';
+requires 'Amon2::Lite';
+requires 'Path::Class';
+
+install_script 'bin/templateviewer';
 
 tests 't/*.t';
 author_tests 'xt';
