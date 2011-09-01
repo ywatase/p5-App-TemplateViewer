@@ -1,0 +1,22 @@
+# NAME
+
+App::TemplateViewer -
+
+# SYNOPSIS
+
+  use App::TemplateViewer;
+
+# DESCRIPTION
+
+App::TemplateViewer is
+
+# AUTHOR
+
+ywatase <ywatase@gmail.com>
+
+# SEE ALSO
+
+# LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
