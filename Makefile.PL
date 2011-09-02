@@ -7,8 +7,9 @@ readme_pod_from 'lib/App/TemplateViewer.pm';
 githubmeta;
 
 requires 'Text::Xslate';
+requires 'Template';
 requires 'Plack';
-requires 'Amon2::Lite';
+requires 'Tatsumaki';
 requires 'Path::Class';
 
 install_script 'bin/templateviewer';

@@ -1,0 +1,10 @@
+<html>
+<body>
+[% if test %]
+[% test %]
+[% end %]
+[% if test2 %]
+[% test2 %]
+[% end %]
+</body>
+</html>

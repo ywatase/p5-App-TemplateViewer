@@ -1,431 +1,55 @@
 #!/usr/bin/env perl
-#===============================================================================
-#
-#         FILE: templateviewer
-#
-#        USAGE: template viewer
-#
-#  DESCRIPTION: 
-#
-#      OPTIONS: ---
-# REQUIREMENTS: ---
-#         BUGS: ---
-#        NOTES: ---
-#       AUTHOR: Yusuke Watase (ym), ywatase@gmail.com
-#      COMPANY: Adways Co., Ltd.
-#      VERSION: 1.0
-#      CREATED: 2011/08/30 15:55:01
-#     REVISION: ---
-#Last Modified:  2011/09/01.
-#===============================================================================
 use strict;
 use warnings;
 
-use Getopt::Long;
-use Amon2::Lite;
-use Encode 'encode_utf8';
-use Text::Xslate;
-use Text::Xslate::Bridge::TT2Like;
-use Pod::Simple::XHTML;
+use Getopt::Long qw(GetOptionsFromArray);
+Getopt::Long::Configure("bundling");
+use Pod::Usage;
 use Path::Class;
-use Carp;
 use Cwd;
-use File::Basename;
+
+use App::TemplateViewer;
 use Plack::Runner;
-use version 0.77;
 
-our $VERSION = 0.02;
-
-my $default_path = $ARGV[0] || getcwd();
-
-
-my $converters = {
-    pod => {
-        process => sub {
-            my $text = shift;
-            my $parser = Pod::Simple::XHTML->new;
-            $parser->html_header('');
-            $parser->html_footer('');
-            $parser->output_string(\my $html);
-            $parser->parse_string_document($text);
-            return $html;
-        },
-    },
-    tt2 => {
-        process => sub {
-            my $text = shift;
-            my $tx = Text::Xslate->new(
-                syntax => 'TTerse',
-                module => [
-                'Text::Xslate::Bridge::TT2Like'
-                ],
-            );
-            my %vars = (test => 'hogehoge');
-            return $tx->render_string($text, \%vars);
-        },
-        analize => sub {
-            my $text = shift;
-            my $content = join "\n",  $text =~ m{\[%[\+\-]?\s*(.*?)\s*[\+\-]?%\]}gmsx;
-            return "<pre>$content</pre>";
-        },
-    },
-    tx  => {
-        process => sub {
-            my $text = shift;
-            my $tx = Text::Xslate->new(
-                module => [
-                'Text::Xslate::Bridge::TT2Like'
-                ],
-            );
-            my %vars = (test => 'hogehoge');
-            return $tx->render_string($text, \%vars);
-        },
-        analize => sub {
-            my $text = shift;
-            my $content = join "\n",  $text =~ m{<:\s*([^\s]*?)\s*:>}gmsx;
-            return "<pre>$content</pre>";
-        },
-    },
-};
-
-sub get_files {
-    my ($path) = @_;
-    my (@dirs, @files);
-    foreach my $file (sort $path->children) {
-        if ( $file->is_dir ) {
-            push @dirs, $file;
-        }
-        else {
-            push @files, $file;
-        }
-    }
-    return {
-        dirs => \@dirs,
-        files =>  \@files,
-    };
-}
-
-sub is_valid_input {
-    my ($path) = @_;
-
-    return 1;
-}
-
-my %args = ();
-
-sub initialize {
-    my @args_pattern =  (
-        'help|?', 'version', 'manual', 'format|f=s',
-    );
-    $args{format} = 'tt2';
-    if ( not GetOptions ( \%args, @args_pattern )) {pod2usage(2); exit 0; }
-    if (exists $args{help}) { pod2usage(1); exit 0; }
-    elsif (exists $args{manual}) { pod2usage(-exitstatus => 0, -verbose => 2); exit 0;}
-    elsif (exists $args{version}) { version(); exit 0; }
-    if(not exists $converters->{$args{format}}){
-        printf STDERR "%s is not supported\n", $args{format};
+sub parse_args {
+    my @args         = @_;
+    my %h            = ();
+    my @args_pattern = ( 'help|h', 'version', 'format|f=s', 'dir|d=s' );
+    $h{format} = 'tt2';
+    if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); exit 0; }
+    if    ( exists $h{help} )    { pod2usage(1); exit 0; }
+    elsif ( exists $h{version} ) { version();    exit 0; }
+    if    ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
+        printf STDERR "%s is not supported\n", $h{format};
+        printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
         exit 0;
     }
+    $h{dir} ||= $ARGV[0] || getcwd();
+    if ( not -d $h{dir} ) {
+        printf STDERR "%s is not directory\n", $h{dir};
+        exit 0;
+    }
+    else {
+        $h{dir} = dir( $h{dir} )->absolute->resolve;
+    }
+    return \%h;
 }
+
+my $args = parse_args(@ARGV);
+
+my $app = App::TemplateViewer->run($args);
+if ( $ENV{TEST} ) {
+    return $app;
+}
+my $runner = Plack::Runner->new;
+$runner->parse_options();
+$runner->run($app);
 
 sub version {
     print <<EOS;
-VERSION: $VERSION
+VERSION: $App::TemplateViewer::VERSION
 EOS
 }
-
-initialize();
-
-get '/' => sub {
-    my ($c) = @_;
-    my $path;
-    my $string = q{};
-
-    my $fmt      = $c->req->param('format') || $args{format};
-    my $type     = $c->req->param('type')   || 'process';
-    my $path_str = $c->req->param('path') || $default_path;
-
-    if ( not -e $path_str ) {
-        $c->redirect("/?format=$fmt&type=$type");
-    }
-    elsif( -d $path_str or -l $path_str){
-        $path = dir $path_str;
-    }
-    elsif( -f $path_str ) {
-        $path = file $path_str;
-        $string = $path->slurp;
-    }
-    is_valid_input($path);
-    my $h = get_files($path->is_dir ? $path : $path->parent);
-    return $c->render('index.tt', 
-        {
-            files    => $h->{files},
-            dirs     => $h->{dirs},
-            parent   => $path->parent,
-            path     => $path,
-            basename => sub {return basename $_[0]},
-            string   => $string,
-            fmt      => $c->req->param('format') || $args{format},
-            type     => $c->req->param('type')   || 'process',
-        },
-    );
-};
-
-post '/preview' => sub {
-    my ($c) = @_;
-    my $converter = $converters->{$c->req->param('format')} ? $converters->{$c->req->param('format')}->{$c->req->param('type')} : undef;
-    my $content = $converter ? $converter->($c->req->param('text')) : '';
-    return $c->create_response(200, ['Content-Type' => 'text/plain'], [encode_utf8($content)]);
-};
-
-my $app = __PACKAGE__->to_app;
-
-if( $ENV{TEST} ){
-    return $app;
-}
-else{
-    my $runner = Plack::Runner->new;
-    $runner->parse_options('-r', '-R', __FILE__);
-    $runner->run($app);
-}
-
-
-__DATA__
-
-@@ index.tt
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-    </style>
-    <title>[% path %]</title>
-  </head>
-  <style>
-    div#sidebar {
-      width: 10%;
-      float: left;
-    }
-    div#content {
-      width: 90%;
-      float: left;
-    }
-    body {
-      background-color: lightgray;
-      margin: 10px;
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-    }
-    div#preview {
-      background-color: white;
-      padding: 5px;
-    }
-  </style>
-  <script type="text/javascript" src="https://www.google.com/jsapi"></script>
-  <script type="text/javascript">google.load("jquery", "1.6.2");</script>
-  <script type="text/javascript">
-  <!--
-  [% include "jquery_ev.tt" %]
-  // -->
-  </script>
-  <script type="text/javascript">
-    $(function () {
-      var child_window;
-      var preview = $('#preview');
-      preview.css({
-        height: $(window).height() - preview.offset().top - 20,
-        overflow: 'auto'
-      });
-      function load_preview () {
-        var text   = $('textarea').val();
-        var format = $('input:radio[name=format]:checked').val();
-        var type   = $('input:radio[name=type]:checked').val();
-        $.ajax({
-          url: '/preview',
-          type: 'POST',
-          data: {
-            text: text,
-            format: format,
-            type: type
-          },
-          success: function (result) {
-            $(preview).html(result);
-            if ( child_window ) {
-              child_window.document.clear();
-              child_window.document.open();
-              child_window.document.write(result);
-              child_window.document.close();
-            }
-          }
-        });
-      };
-      function wopen () {
-        if ( ! child_window || child_window.closed ) {
-          child_window = window.open();
-          child_window.addEventListener("unload", function(){ child_window = undefined; }, false );
-        }
-        load_preview()
-      };
-      function wclose () {
-        child_window.close();
-      };
-
-      $('textarea').focus().keyup(function () { load_preview() });
-      $('input[name="format"]:radio').change(function () { load_preview() });
-      $('input[name="type"]:radio').change(function () { load_preview() });
-      $(function () { load_preview() });
-
-      $('#cmd_wopen').click(function () { wopen () });
-      $('#cmd_wclose').click(function () { wclose () });
-
-      window.addEventListener("unload", function(){
-        if(!child_window) return false; 
-          child_window.close();
-      }, false );
-    });
-    function open_link (path) {
-      var format = $('input:radio[name=format]:checked').val();
-      var type   = $('input:radio[name=type]:checked').val();
-      var url    = '?format=' + format + '&type=' + type + '&path=' + path;
-      window.open(url, "_self");
-      return false;
-    }
-  </script>
-  <body>
-    <div id="sidebar">
-    <ul>
-      <li><a href="#" onclick="open_link('[% parent %]');">../</a></li>
-    [% foreach dir in dirs %]
-      <li><a href="#" onclick="open_link('[% dir.resolve %]');">[% basename(dir) %]/</a></li>
-    [% end %]
-    [% foreach file in files %]
-      <li><a href="#" onclick="open_link('[% file.resolve %]');">[% basename(file) %]</a></li>
-    [% end %]
-    </ul>
-    </div>
-    <div id="content">
-    <!--
-    <input type="radio" name="format" id="radio1" value="markdown"><label for="radio1">Markdown</label>
-    <input type="radio" name="format" id="radio2" value="xatena"><label for="radio2">はてな記法</label>
-    -->
-    <input type="radio" name="format" id="radio3" value="tt2"[% if fmt == 'tt2' %] checked="checked"[% END %]><label for="radio3">Template-Toolkit</label>
-    <input type="radio" name="format" id="radio4" value="tx"[% if  fmt == 'tx' %] checked="checked"[% END %]><label for="radio4">Text::Xslate</label>
-    <input type="radio" name="format" id="radio5" value="pod"[% if fmt == 'pod' %] checked="checked"[% END %]><label for="radio5">Pod</label>
-    <br>
-    <input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label>
-    <input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label>
-
-    <textarea>[% string %]</textarea>
-    <input type="button" id="cmd_wopen"  value="別Windowで開く">
-    <input type="button" id="cmd_wclose" value="別Windowを閉じる">
-    <hr>
-    <div id="preview"></div>
-    </div>
-  </body>
-</html>
-
-@@ jquery_ev.tt
-
-/* Title: jQuery.ev
- *
- * A COMET event loop for jQuery
- *
- * $.ev.loop long-polls on a URL and expects to get an array of JSON-encoded
- * objects back.  Each of these objects should represent a message from the COMET
- * server that's telling your client-side Javascript to do something.
- *
- */
-(function($){
-
-  $.ev = {
-
-    handlers : {},
-    running  : false,
-    xhr      : null,
-    verbose  : true,
-    timeout  : null,
-
-    /* Method: run
-     *
-     * Respond to an array of messages using the object in this.handlers
-     *
-     */
-    run: function(messages) {
-      var i, m, h; // index, event, handler
-      for (i = 0; i < messages.length; i++) {
-        m = messages[i];
-        if (!m) continue;
-        h = this.handlers[m.type];
-        if (!h) h = this.handlers['*'];
-        if ( h) h(m);
-      }
-    },
-
-    /* Method: stop
-     *
-     * Stop the loop
-     *
-     */
-    stop: function() {
-      if (this.xhr) {
-        this.xhr.abort();
-        this.xhr = null;
-      }
-      this.running = false;
-    },
-
-    /*
-     * Method: loop
-     *
-     * Long poll on a URL
-     *
-     * Arguments:
-     *
-     *   url
-     *   handler
-     *
-     */
-    loop: function(url, handlers) {
-      var self = this;
-      if (handlers) {
-        if (typeof handlers == "object") {
-          this.handlers = handlers;
-        } else if (typeof handlers == "function") {
-          this.run = handlers;
-        } else {
-          throw("handlers must be an object or function");
-        }
-      }
-      this.running = true;
-      this.xhr = $.ajax({
-        type     : 'GET',
-        dataType : 'json',
-        cache    : false,
-        url      : url,
-        timeout  : self.timeout,
-        success  : function(messages, status) {
-          // console.log('success', messages);
-          self.run(messages)
-        },
-        complete : function(xhr, status) {
-          var delay;
-          if (status == 'success') {
-            delay = 100;
-          } else {
-            // console.log('status: ' + status, '; waiting before long-polling again...');
-            delay = 5000;
-          }
-          // "recursively" loop
-          window.setTimeout(function(){ if (self.running) self.loop(url); }, delay);
-        }
-      });
-    }
-
-  };
-
-})(jQuery);
 
 __END__
 
@@ -442,6 +66,28 @@ templateviewer - template viewer
 =head1 DESCRIPTION
 
 templateviewer is template viewer
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--dir|-dir> /path/to/target
+
+set target directory. this option as same as first args.
+
+=item B<--format|-f> format
+
+set default format type
+
+=item B<--help|-h>
+
+show help
+
+=item B<--version>
+
+show version
+
+=back
 
 =head1 AUTHOR
 
