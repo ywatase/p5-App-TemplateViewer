@@ -7,10 +7,24 @@ readme_pod_from 'lib/App/TemplateViewer.pm';
 githubmeta;
 
 requires 'Text::Xslate';
+requires 'Text::Xslate::Bridge::TT2Like';
+requires 'Pod::Simple::XHTML';
 requires 'Template';
 requires 'Plack';
 requires 'Tatsumaki';
 requires 'Path::Class';
+requires 'AnyEvent';
+requires 'AnyEvent::HTTP';
+requires 'Filesys::Notify::Simple';
+requires 'Tatsumaki';
+requires 'Tatsumaki::Error';
+requires 'Tatsumaki::Application';
+requires 'Tatsumaki::MessageQueue';
+requires 'Time::HiRes';
+requires 'Carp';
+requires 'File::Basename';
+requires 'Encode';
+requires 'Data::Section::Simple';
 
 install_script 'bin/templateviewer';
 

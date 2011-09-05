@@ -35,7 +35,9 @@ sub parse_args {
     return \%h;
 }
 
-my $args = parse_args(@ARGV);
+my $args    = parse_args(@ARGV);
+my $watcher = App::TemplateViewer::FileWatcher->new(watch => [$args->{dir}]);
+$watcher->run;
 
 my $app = App::TemplateViewer->run($args);
 if ( $ENV{TEST} ) {

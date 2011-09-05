@@ -1,7 +1,7 @@
 package App::TemplateViewer;
 use strict;
 use warnings;
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Encode 'encode_utf8';
 use Text::Xslate;
@@ -101,10 +101,10 @@ sub get_files {
 }
 
 package App::TemplateViewer::FileWatcher;
-use Linux::Inotify2;
+use Tatsumaki::MessageQueue;
 use AnyEvent;
+use AnyEvent::HTTP;
 use Carp;
-
 
 sub new {
     my $class = shift;
@@ -112,19 +112,69 @@ sub new {
     bless { %args }, $class;
 }
 
-sub watch_file {
-    my ($self, $path) = @_;
+# copy from Plack::Loader::Restarter
+sub _kill_child {
+    my $self = shift;
 
+    my $pid = $self->{pid} or return;
+    warn "Killing the existing server (pid:$pid)\n";
+    kill 'TERM' => $pid;
+    waitpid($pid, 0); 
+}
+
+# copy from Plack::Loader::Restarter
+sub _valid_file {
+    my($self, $file) = @_;
+    $file->{path} !~ m![/\\][\._]|\.bak$|~$|_flymake\.p[lm]!;
+}
+sub _send_update_message {
+    my ($self, @update) = @_;
+    my $cv = AnyEvent->condvar;
+    foreach my $ev (@update) {
+        $cv->begin;
+        # TODO change server ip and port for script args
+        http_get "http://127.0.0.1:5000/reflesh?path=" . $ev->{path},
+        sub{
+            warn "Send http request to queue message for update file : " . $ev->{path};
+            $cv->end;
+        };
+    }
+    $cv->recv;
+}
+
+sub run {
+    my ($self, $path) = @_;
+    $self->{pid} = fork;
+    croak "fork() failed: $!" unless defined $self->{pid};
+    return unless $self->{pid};
+    # parent watch file
     require Filesys::Notify::Simple;
 
-    my $watcher = Filesys::Notify::Simple->new([ "." ]);
-    $watcher->wait(
-        sub {
-            for my $event (@_) {
-                $event->{path} # full path of the file updated
-            }
+    # change watch path
+    my $watcher = Filesys::Notify::Simple->new($self->{watch});
+    warn "Watching @{$self->{watch}} for file updates.\n";
+    local $SIG{TERM} = sub { $self->_kill_child; exit(0); };
+
+    while ( 1 ) {
+        my @update;
+        $watcher->wait(
+            sub {
+                my @events = @_;
+                @events = grep $self->_valid_file($_), @events;
+                return unless @events;
+                @update = @events;
+            });
+
+        next unless @update;
+
+        foreach my $ev (@update) {
+            warn "-- $ev->{path} updated.\n";
         }
-    );
+
+        $self->_send_update_message(@update);
+        warn "Successfully send update message!\n";
+        return unless $self->{pid};
+    }
 }
 
 package App::TemplateViewer::PublishHandler;
@@ -132,11 +182,13 @@ use base qw(Tatsumaki::Handler);
 use Tatsumaki::MessageQueue;
 sub get {
     my $self = shift;
-    my $mq = Tatsumaki::MessageQueue->instance('mq');
+    my $path = $self->request->param('path') || undef;
+    my $mq = Tatsumaki::MessageQueue->instance($path || 'mq');
     $mq->publish({
             type => "message",
+            path => $path,
             time => scalar Time::HiRes::gettimeofday,
-    });
+        });
     $self->write({ success => 1 });
 }
 
@@ -148,7 +200,8 @@ use Tatsumaki::MessageQueue;
 
 sub get {
     my($self) = @_;
-    my $mq = Tatsumaki::MessageQueue->instance('mq');
+    my $channel = $self->request->param('path') || 'mq';
+    my $mq = Tatsumaki::MessageQueue->instance($channel);
     my $client_id = $self->request->param('client_id')
         or Tatsumaki::Error::HTTP->throw(500, "'client_id' needed");
     $client_id = rand(1) if $client_id eq 'dummy'; # for benchmarking stuff
@@ -158,24 +211,26 @@ sub get {
 sub on_new_event {
     my($self, @events) = @_;
     $self->write(\@events);
-    $self->finish;
+$self->finish;
 }
 
 package App::TemplateViewer::RefleshHandler;
 use base qw(Tatsumaki::Handler);
-use HTML::Entities;
 use Encode;
 
-sub post {
+sub get {
     my($self) = @_;
 
-    my $v = $self->request->parameters;
-    my $mq = Tatsumaki::MessageQueue->instance('mq');
+    # TODO add error handling
+    my $channel = $self->request->param('path') || 'mq';
+    my $string  = Path::Class::file($self->request->param('path'))->slurp;
+    my $mq = Tatsumaki::MessageQueue->instance($channel);
     $mq->publish({
-        type => "reflesh",
-        address => $self->request->address,
-        time => scalar Time::HiRes::gettimeofday,
-    });
+            type    => "reflesh",
+            string  => $string,
+            address => $self->request->address,
+            time => scalar Time::HiRes::gettimeofday,
+        });
     $self->write({ success => 1 });
 }
 
@@ -190,9 +245,9 @@ sub post {
     my $text     = $v->{text};
 
     my $converter
-        = $converters->{$fmt}
-        ? $converters->{$fmt}->{$type}
-        : undef;
+    = $converters->{$fmt}
+    ? $converters->{$fmt}->{$type}
+    : undef;
     my $content = $converter ? $converter->( $text ) : '';
     return $c->write(Encode::encode_utf8($content));
 }
@@ -236,8 +291,8 @@ sub get {
             'syntax'   => 'TTerse',
             'module'   => [ 'Text::Xslate::Bridge::TT2Like' ],
             'path'     => [ $vpath ],
-            },
-        );
+        },
+    );
     return $self->finish(
         $tx->render(
             'index.tt',
@@ -267,34 +322,34 @@ __DATA__
     </style>
     <title>[% path %]</title>
   </head>
-  <style>
-    div#sidebar {
-      width: 10%;
-      float: left;
-    }
-    div#content {
-      width: 90%;
-      float: left;
-    }
-    body {
-      background-color: lightgray;
-      margin: 10px;
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-    }
-    div#preview {
-      background-color: white;
-      padding: 5px;
-    }
+<style>
+  div#sidebar {
+    width: 10%;
+    float: left;
+  }
+  div#content {
+    width: 90%;
+    float: left;
+  }
+  body {
+    background-color: lightgray;
+    margin: 10px;
+  }
+  textarea {
+    width: 100%;
+    height: 100px;
+  }
+  div#preview {
+    background-color: white;
+    padding: 5px;
+  }
   </style>
   <script type="text/javascript" src="https://www.google.com/jsapi"></script>
   <script type="text/javascript">google.load("jquery", "1.6.2");</script>
   <script type="text/javascript">
-  <!--
-  [% include "jquery_ev.tt" %]
-  // -->
+    <!--
+    [% include "jquery_ev.tt" %]
+    // -->
   </script>
   <script type="text/javascript">
     $(function () {
@@ -337,24 +392,26 @@ __DATA__
       function wclose () {
         child_window.close();
       };
-
+    
       $('textarea').focus().keyup(function () { load_preview() });
       $('input[name="format"]:radio').change(function () { load_preview() });
       $('input[name="type"]:radio').change(function () { load_preview() });
       $(function () { load_preview() });
-
+      
       $('#cmd_wopen').click(function () { wopen () });
       $('#cmd_wclose').click(function () { wclose () });
-
+      
       window.addEventListener("unload", function(){
-        if(!child_window) return false; 
+          if(!child_window) return false; 
           child_window.close();
-      }, false );
-
-
+        }, false
+      );
+    
+    
       // listen for events
       $.ev.handlers.reflesh = function (ev) {
         try {
+          $('textarea').val(ev.string);
           load_preview();
         } catch(ev) { if (console) console.log(ev) }
       };
@@ -372,19 +429,19 @@ __DATA__
       return false;
     }
   </script>
-  <body>
-    <div id="sidebar">
+<body>
+  <div id="sidebar">
     <ul>
       <li><a href="#" onclick="open_link('[% parent %]');">../</a></li>
-    [% foreach dir in dirs %]
+      [% foreach dir in dirs %]
       <li><a href="#" onclick="open_link('[% dir.resolve %]');">[% basename(dir) %]/</a></li>
-    [% end %]
-    [% foreach file in files %]
+      [% end %]
+      [% foreach file in files %]
       <li><a href="#" onclick="open_link('[% file.resolve %]');">[% basename(file) %]</a></li>
-    [% end %]
-    </ul>
-    </div>
-    <div id="content">
+      [% end %]
+      </ul>
+  </div>
+  <div id="content">
     <!--
     <input type="radio" name="format" id="radio1" value="markdown"><label for="radio1">Markdown</label>
     <input type="radio" name="format" id="radio2" value="xatena"><label for="radio2">はてな記法</label>
@@ -395,13 +452,13 @@ __DATA__
     <br>
     <input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label>
     <input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label>
-
+    
     <textarea>[% string %]</textarea>
     <input type="button" id="cmd_wopen"  value="別Windowで開く">
     <input type="button" id="cmd_wclose" value="別Windowを閉じる">
     <hr>
     <div id="preview"></div>
-    </div>
+  </div>
   </body>
 </html>
 
