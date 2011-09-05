@@ -14,7 +14,7 @@ use Plack::Runner;
 sub parse_args {
     my @args         = @_;
     my %h            = ();
-    my @args_pattern = ( 'help|h', 'version', 'format|f=s', 'dir|d=s' );
+    my @args_pattern = ( 'help|h', 'version', 'format|f=s', 'dir|d=s', 'target|t=s' );
     $h{format} = 'tt2';
     if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); exit 0; }
     if    ( exists $h{help} )    { pod2usage(1); exit 0; }
@@ -24,19 +24,19 @@ sub parse_args {
         printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
         exit 0;
     }
-    $h{dir} ||= $ARGV[0] || getcwd();
-    if ( not -d $h{dir} ) {
-        printf STDERR "%s is not directory\n", $h{dir};
+    $h{target} ||= $ARGV[0] || getcwd();
+    if ( not -d $h{target} ) {
+        printf STDERR "%s is not directory\n", $h{target};
         exit 0;
     }
     else {
-        $h{dir} = dir( $h{dir} )->absolute->resolve;
+        $h{target} = dir( $h{target} )->absolute->resolve;
     }
     return \%h;
 }
 
 my $args    = parse_args(@ARGV);
-my $watcher = App::TemplateViewer::FileWatcher->new(watch => [$args->{dir}]);
+my $watcher = App::TemplateViewer::FileWatcher->new(watch => [$args->{target}]);
 $watcher->run;
 
 my $app = App::TemplateViewer->run($args);
@@ -73,9 +73,13 @@ templateviewer is template viewer
 
 =over 8
 
-=item B<--dir|-dir> /path/to/target
+=item B<--target|-t> /path/to/target
 
 set target directory. this option as same as first args.
+
+=item B<--data|-d> /path/to/data/dir
+
+set data directory. default: /tmp/tv_????/
 
 =item B<--format|-f> format
 

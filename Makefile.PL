@@ -25,6 +25,7 @@ requires 'Carp';
 requires 'File::Basename';
 requires 'Encode';
 requires 'Data::Section::Simple';
+requires 'YAML::Any';
 
 install_script 'bin/templateviewer';
 

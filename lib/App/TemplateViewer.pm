@@ -22,11 +22,13 @@ sub run {
     %config = %$args;
     my $app = Tatsumaki::Application->new(
         [
-        "/publish" => 'App::TemplateViewer::PublishHandler',
-        "/poll"    => 'App::TemplateViewer::PollHandler',
-        "/preview" => 'App::TemplateViewer::PreviewHandler',
-        "/reflesh" => 'App::TemplateViewer::RefleshHandler',
-        "/"        => 'App::TemplateViewer::RootHandler',
+        "/publish"   => 'App::TemplateViewer::PublishHandler',
+        "/poll"      => 'App::TemplateViewer::PollHandler',
+        "/preview"   => 'App::TemplateViewer::PreviewHandler',
+        "/reflesh"   => 'App::TemplateViewer::RefleshHandler',
+        "/load_vars" => 'App::TemplateViewer::LoadVarsHandler',
+        "/save_vars" => 'App::TemplateViewer::SaveVarsHandler',
+        "/"          => 'App::TemplateViewer::RootHandler',
         ]
     );
     $app->static_path(dirname(__FILE__) . "/../../static");
@@ -47,13 +49,12 @@ my $converters = {
     },
     tt2 => {
         process => sub {
-            my $text = shift;
+            my ($text, $var) = @_;
             my $tx   = Text::Xslate->new(
                 syntax => 'TTerse',
                 module => ['Text::Xslate::Bridge::TT2Like'],
             );
-            my %vars = ( test => 'hogehoge' );
-            return $tx->render_string( $text, \%vars );
+            return $tx->render_string( $text, $var );
         },
         analize => sub {
             my $text = shift;
@@ -182,6 +183,7 @@ use base qw(Tatsumaki::Handler);
 use Tatsumaki::MessageQueue;
 sub get {
     my $self = shift;
+    # TODO inputcheck
     my $path = $self->request->param('path') || undef;
     my $mq = Tatsumaki::MessageQueue->instance($path || 'mq');
     $mq->publish({
@@ -200,6 +202,7 @@ use Tatsumaki::MessageQueue;
 
 sub get {
     my($self) = @_;
+    # TODO inputcheck
     my $channel = $self->request->param('path') || 'mq';
     my $mq = Tatsumaki::MessageQueue->instance($channel);
     my $client_id = $self->request->param('client_id')
@@ -236,20 +239,56 @@ sub get {
 
 package App::TemplateViewer::PreviewHandler;
 use base qw(Tatsumaki::Handler);
+use YAML::Any;
 
 sub post {
-    my ($c)      = @_;
-    my $v        = $c->request->parameters;
-    my $fmt      = $v->{format} || $config{format};
-    my $type     = $v->{type}   || 'process';
-    my $text     = $v->{text};
+    my ($self)  = @_;
+    my $v       = $self->request->parameters;
+    my $fmt     = $v->{format} || $config{format};
+    my $type    = $v->{type}   || 'process';
+    my $text    = $v->{text};
+    my $var     = Load $v->{variables};
 
     my $converter
-    = $converters->{$fmt}
-    ? $converters->{$fmt}->{$type}
-    : undef;
-    my $content = $converter ? $converter->( $text ) : '';
-    return $c->write(Encode::encode_utf8($content));
+        = $converters->{$fmt}
+        ? $converters->{$fmt}->{$type}
+        : undef;
+    my $content = $converter ? $converter->( $text, $var ) : '';
+    return $self->write(Encode::encode_utf8($content));
+}
+
+package App::TemplateViewer::SaveVarsHandler;
+use base qw(Tatsumaki::Handler);
+
+
+use YAML::Any;
+sub post {
+    my($self) = @_;
+    my $path    = $self->request->param('path');
+    my $senario = $self->request->param('senario');
+    my $yaml    = Load $self->request->param('variables');
+    if ( $senario ){
+        my $tmp = YAML::Any::LoadFile($path);
+        $yaml->{$senario} = $tmp;
+    }
+    YAML::Any::DumpFile($path, $yaml);
+    return $self->write({success => 1});
+}
+
+package App::TemplateViewer::LoadVarsHandler;
+use base qw(Tatsumaki::Handler);
+
+use YAML::Any;
+sub post {
+    my($self) = @_;
+    my $path  = $self->request->param('path');
+    my $senario = $self->request->param('senario');
+    my $yaml  = YAML::Any::LoadFile($path);
+    my $result = $yaml;
+    if ($senario and exists $yaml->{$senario}){
+        $result = $yaml->{$senario};
+    }
+    return $self->write(Encode::encode_utf8 Dump $result);
 }
 
 package App::TemplateViewer::RootHandler;
@@ -269,7 +308,7 @@ sub get {
     my $v        = $self->request->parameters;
     my $fmt      = $v->{format} || $config{format};
     my $type     = $v->{type} || 'process';
-    my $path_str = $v->{path} || $config{dir};
+    my $path_str = $v->{path} || $config{target};
 
     if ( not -e $path_str ) {
         return $self->response->redirect("/?format=$fmt&type=$type");
@@ -322,30 +361,32 @@ __DATA__
     </style>
     <title>[% path %]</title>
   </head>
-<style>
-  div#sidebar {
-    width: 10%;
-    float: left;
-  }
-  div#content {
-    width: 90%;
-    float: left;
-  }
-  body {
-    background-color: lightgray;
-    margin: 10px;
-  }
-  textarea {
-    width: 100%;
-    height: 100px;
-  }
-  div#preview {
-    background-color: white;
-    padding: 5px;
-  }
+  <style>
+    div#sidebar {
+      width: 10%;
+      float: left;
+    }
+    div#content {
+      width: 90%;
+      float: left;
+    }
+    body {
+      background-color: lightgray;
+      margin: 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 100px;
+    }
+    div#preview {
+      background-color: white;
+      padding: 5px;
+    }
   </style>
+  <link rel="Stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/themes/ui-darkness/jquery-ui.css" type="text/css" />
   <script type="text/javascript" src="https://www.google.com/jsapi"></script>
   <script type="text/javascript">google.load("jquery", "1.6.2");</script>
+  <script type="text/javascript">google.load("jqueryui", "1.8.16");</script>
   <script type="text/javascript">
     <!--
     [% include "jquery_ev.tt" %]
@@ -360,16 +401,18 @@ __DATA__
         overflow: 'auto'
       });
       function load_preview () {
-        var text   = $('textarea').val();
-        var format = $('input:radio[name=format]:checked').val();
-        var type   = $('input:radio[name=type]:checked').val();
+        var text      = $('#source').val();
+        var variables = $('#variables').val();
+        var format    = $('input:radio[name=format]:checked').val();
+        var type      = $('input:radio[name=type]:checked').val();
         $.ajax({
           url: '/preview',
           type: 'POST',
           data: {
             text: text,
             format: format,
-            type: type
+            type: type,
+            variables: variables
           },
           success: function (result) {
             $(preview).html(result);
@@ -379,6 +422,39 @@ __DATA__
               child_window.document.write(result);
               child_window.document.close();
             }
+          }
+        });
+      };
+      function load_variables () {
+        var path    = $('#yaml_path').val();
+        var senario = $('#yaml_senario').val();
+        $.ajax({
+          url: '/load_vars',
+          type: 'POST',
+          data: {
+            senario: senario,
+            path:    path,
+          },
+          success: function (result) {
+            $('#variables').val(result);
+            load_preview();
+          }
+        });
+      };
+      function save_variables () {
+        var path      = $('#yaml_path').val();
+        var senario   = $('#yaml_senario').val();
+        var variables = $('#variables').val();
+        $.ajax({
+          url: '/save_vars',
+          type: 'POST',
+          data: {
+            senario: senario,
+            path:    path,
+            variables: variables
+          },
+          success: function (result) {
+            load_preview();
           }
         });
       };
@@ -393,25 +469,31 @@ __DATA__
         child_window.close();
       };
     
-      $('textarea').focus().keyup(function () { load_preview() });
+      $('#source').focus().keyup(function () { load_preview() });
       $('input[name="format"]:radio').change(function () { load_preview() });
       $('input[name="type"]:radio').change(function () { load_preview() });
       $(function () { load_preview() });
       
       $('#cmd_wopen').click(function () { wopen () });
       $('#cmd_wclose').click(function () { wclose () });
+      $('#cmd_apply_variables').click(function () { load_preview() });
+      $('#cmd_load_variables').click(function () { load_variables() });
+      $('#cmd_save_variables').click(function () { save_variables() });
       
       window.addEventListener("unload", function(){
           if(!child_window) return false; 
           child_window.close();
         }, false
       );
-    
-    
+
+      // autocomplete
+      $('#yaml_path').autocomplete({ source: ["test.yaml"] });
+
+
       // listen for events
       $.ev.handlers.reflesh = function (ev) {
         try {
-          $('textarea').val(ev.string);
+          $('#source').val(ev.string);
           load_preview();
         } catch(ev) { if (console) console.log(ev) }
       };
@@ -453,7 +535,13 @@ __DATA__
     <input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label>
     <input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label>
     
-    <textarea>[% string %]</textarea>
+    <textarea id="source">[% string %]</textarea>
+    <label for="yaml_path">path to YAML file</label><input type="text" name="yaml_path" id="yaml_path">
+    <label for="yaml_senario">ケース名</label><input type="text" name="yaml_senario" id="yaml_senario">
+    <input type="button" id="cmd_load_variables" value="YAMLを読み込む">
+    <input type="button" id="cmd_save_variables" value="YAMLを保存する">
+    <textarea id="variables"></textarea>
+    <input type="button" id="cmd_apply_variables" value="変数を適用する">
     <input type="button" id="cmd_wopen"  value="別Windowで開く">
     <input type="button" id="cmd_wclose" value="別Windowを閉じる">
     <hr>
