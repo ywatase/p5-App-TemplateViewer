@@ -23,7 +23,7 @@ sub run {
     my ( $class, $args ) = @_;
     %config = %$args;
     my $app = Tatsumaki::Application->new(
-        [   "/publish"           => 'App::TemplateViewer::PublishHandler',
+        [
             "/poll"              => 'App::TemplateViewer::PollHandler',
             "/preview"           => 'App::TemplateViewer::PreviewHandler',
             "/reflesh"           => 'App::TemplateViewer::RefleshHandler',
@@ -198,25 +198,6 @@ sub run {
         warn "Successfully send update message!\n";
         return unless $self->{pid};
     }
-}
-
-package App::TemplateViewer::PublishHandler;
-use base qw(Tatsumaki::Handler);
-use Tatsumaki::MessageQueue;
-
-sub get {
-    my $self = shift;
-
-    # TODO inputcheck
-    my $path = $self->request->param('path') || undef;
-    my $mq = Tatsumaki::MessageQueue->instance( $path || 'mq' );
-    $mq->publish(
-        {   type => "message",
-            path => $path,
-            time => scalar Time::HiRes::gettimeofday,
-        }
-    );
-    $self->write( { success => 1 } );
 }
 
 package App::TemplateViewer::PollHandler;
