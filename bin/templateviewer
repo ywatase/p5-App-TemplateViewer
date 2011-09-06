@@ -14,7 +14,7 @@ use Plack::Runner;
 sub parse_args {
     my @args         = @_;
     my %h            = ();
-    my @args_pattern = ( 'help|h', 'version', 'format|f=s', 'dir|d=s', 'target|t=s' );
+    my @args_pattern = ( 'help|h', 'version', 'format|f=s', 'data|d=s', 'target|t=s' );
     $h{format} = 'tt2';
     if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); exit 0; }
     if    ( exists $h{help} )    { pod2usage(1); exit 0; }
@@ -32,6 +32,8 @@ sub parse_args {
     else {
         $h{target} = dir( $h{target} )->absolute->resolve;
     }
+    # TODO temp
+    $h{data} ||= '/tmp/templateviewer';
     return \%h;
 }
 
