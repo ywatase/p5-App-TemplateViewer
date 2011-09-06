@@ -13,8 +13,8 @@ use Path::Class;
 use Tatsumaki;
 use Tatsumaki::Error;
 use Tatsumaki::Application;
-use Time::HiRes;
 use Carp;
+use YAML::Any;
 use File::Basename;
 
 my %config = ();
@@ -23,8 +23,7 @@ sub run {
     my ( $class, $args ) = @_;
     %config = %$args;
     my $app = Tatsumaki::Application->new(
-        [
-            "/poll"              => 'App::TemplateViewer::PollHandler',
+        [   "/poll"              => 'App::TemplateViewer::PollHandler',
             "/preview"           => 'App::TemplateViewer::PreviewHandler',
             "/reflesh"           => 'App::TemplateViewer::RefleshHandler',
             "/load_vars"         => 'App::TemplateViewer::LoadVarsHandler',
@@ -112,7 +111,7 @@ sub get_data_files {
 }
 
 sub _is_yaml {
-    my ( @files ) = @_;
+    my (@files) = @_;
     my @yaml;
     foreach my $file (@files) {
         push @yaml, $file if -e $file->resolve and $file->basename =~ /\.ya?ml\z/msx;
@@ -247,7 +246,6 @@ sub get {
 
 package App::TemplateViewer::PreviewHandler;
 use base qw(Tatsumaki::Handler);
-use YAML::Any;
 
 sub post {
     my ($self) = @_;
@@ -255,7 +253,7 @@ sub post {
     my $fmt  = $v->{format} || $config{format};
     my $type = $v->{type}   || 'process';
     my $text = $v->{text};
-    my $var  = Load $v->{variables};
+    my $var  = YAML::Any::Load $v->{variables};
 
     my $converter
         = $converters->{$fmt}
@@ -272,15 +270,15 @@ sub post {
     my $self = shift;
 
     # TODO inputcheck
-    my $path    = $self->request->param('path');
-    my $request = $self->request->param('request');
-    my $target_file = Path::Class::dir($config{data}, $path);
+    my $path        = $self->request->param('path');
+    my $request     = $self->request->param('request');
+    my $target_file = Path::Class::dir( $config{data}, $path );
     if ( not -d $target_file->stringify ) {
-        return $self->write( { success => 0, errmsg  => "not valid path: $target_file" } );
+        return $self->write( { success => 0, errmsg => "not valid path: $target_file" } );
     }
 
     my @yamls = App::TemplateViewer::get_data_files($target_file);
-    @yamls = grep { m{$request} } @yamls if $request !~ m{\A\s*\z}msx;
+    @yamls = grep {m{$request}} @yamls if $request !~ m{\A\s*\z}msx;
     $self->write( { success => 1, list => \@yamls, errmsg => "$target_file" } );
 }
 
@@ -290,41 +288,43 @@ use base qw(Tatsumaki::Handler);
 sub post {
     my $self = shift;
 
-    my $file    = $self->request->param('file');
-    my $path    = $self->request->param('path');
-    my $request = $self->request->param('request');
-    my $target_file = Path::Class::file($config{data}, $path, $file);
+    my $file        = $self->request->param('file');
+    my $path        = $self->request->param('path');
+    my $request     = $self->request->param('request');
+    my $target_file = Path::Class::file( $config{data}, $path, $file );
 
-    if (not -e $target_file->stringify){
+    if ( not -e $target_file->stringify ) {
         return $self->write( { success => 0, errmsg => "$target_file is not found" } );
     }
-    my $yaml    = YAML::Any::LoadFile($target_file->stringify)
-      or return $self->write( { success => 0, errmsg => "fail to load : $target_file" } );
-    
-    my @senarios   = keys %$yaml;
-    @senarios = grep { m{$request} } @senarios if $request !~ m{\A\s*\z}msx;
+    my $yaml = YAML::Any::LoadFile( $target_file->stringify )
+        or return $self->write( { success => 0, errmsg => "fail to load : $target_file" } );
+
+    my @senarios = keys %$yaml;
+    @senarios = grep {m{$request}} @senarios if $request !~ m{\A\s*\z}msx;
     $self->write( { success => 1, list => \@senarios } );
 }
 
 package App::TemplateViewer::SaveVarsHandler;
 use base qw(Tatsumaki::Handler);
 
-use YAML::Any;
-
 sub post {
     my ($self)   = @_;
     my $file     = $self->request->param('file');
     my $path     = $self->request->param('path');
     my $senario  = $self->request->param('senario');
-    my $yaml_tmp = Load $self->request->param('variables');
+    my $yaml_tmp = YAML::Any::Load $self->request->param('variables');
     my $yaml;
 
-    my $target_file = Path::Class::file($path, $file);
-    if ( not $target_file->parent->subsumes(Path::Class::dir($config{data})->resolve->absolute)) {
-        $target_file = Path::Class::file($config{data}, $path, $file);
+    my $target_file = Path::Class::file( $path, $file );
+    if (not $target_file->parent->subsumes( Path::Class::dir( $config{data} )->resolve->absolute ) )
+    {
+        $target_file = Path::Class::file( $config{data}, $path, $file );
     }
     if ($senario) {
-        $yaml = -e $target_file->stringify ? YAML::Any::LoadFile($file->stringify) : Load '';
+        $yaml
+            = -e $target_file->stringify
+            ? YAML::Any::LoadFile( $file->stringify )
+            : YAML::Any::Load '';
         $yaml->{$senario} = $yaml_tmp;
     }
     else {
@@ -337,36 +337,38 @@ sub post {
 package App::TemplateViewer::LoadVarsHandler;
 use base qw(Tatsumaki::Handler);
 
-use YAML::Any;
-
 sub post {
     my ($self)  = @_;
     my $file    = $self->request->param('file');
     my $path    = $self->request->param('path');
     my $senario = $self->request->param('senario');
 
-    my $target_file = Path::Class::file($path, $file);
-    if ( not $target_file->parent->subsumes(Path::Class::dir($config{data})->resolve->absolute)) {
-        $target_file = Path::Class::file($config{data}, $path, $file);
+    my $target_file = Path::Class::file( $path, $file );
+    if (not $target_file->parent->subsumes( Path::Class::dir( $config{data} )->resolve->absolute ) )
+    {
+        $target_file = Path::Class::file( $config{data}, $path, $file );
     }
-    if (not -e $target_file->stringify){
+    if ( not -e $target_file->stringify ) {
         return $self->write( { success => 0, errmsg => "$target_file is not found" } );
     }
-    my $yaml    = YAML::Any::LoadFile($target_file->stringify);
-    my $result  = $yaml;
+    my $yaml   = YAML::Any::LoadFile( $target_file->stringify );
+    my $result = $yaml;
     if ( $senario and exists $yaml->{$senario} ) {
         $result = $yaml->{$senario};
     }
-    return $self->write( { success => 1, file => "$target_file", data => Encode::encode_utf8 Dump $result });
+    return $self->write(
+        {   success => 1,
+            file    => "$target_file",
+            data    => Encode::encode_utf8 YAML::Any::Dump $result
+        }
+    );
 }
 
 package App::TemplateViewer::RootHandler;
 use base qw(Tatsumaki::Handler);
 
 use Carp;
-use Path::Class;
 use File::Basename;
-use Text::Xslate;
 use Data::Section::Simple qw(get_data_section);
 
 sub get {
@@ -383,10 +385,10 @@ sub get {
         return $self->response->redirect("/?format=$fmt&type=$type");
     }
     elsif ( -d $path_str or -l $path_str ) {
-        $path = dir $path_str;
+        $path = Path::Class::dir $path_str;
     }
     elsif ( -f $path_str ) {
-        $path   = file $path_str;
+        $path   = Path::Class::file $path_str;
         $string = $path->slurp;
 
         #App::TemplateViewer::watch_file($path);
@@ -447,13 +449,9 @@ __DATA__
       list-style-type: none;
       float:   left;
     }
-    .clearfix {
-      clear: both;
-    }
     div#tv_sidebar {
-      width: 10%;
       float: left;
-      font-family: "Consolas", "Courier New", Courier, mono, serif;
+      fon class="ui-helper-clearfix"t-family: "Consolas", "Courier New", Courier, mono, serif;
       font-size: 12px;
     }
     div#tv_sidebar li {
@@ -461,16 +459,22 @@ __DATA__
       padding: 0px;
     }
     div#tv_content {
-      width: 90%;
-      float: left;
+      width: auto;
+//      float:   left;
+      position: relative;
+    }
+    .hide_tv_sidebar div#tv_content {
+      width: 100%;
     }
     body {
       margin: 10px;
       background-color: #ffffff;
     }
     textarea {
-      width: 100%;
       height: 100px;
+    }
+    .hide_tv_sidebar textarea {
+      width: 100%;
     }
     div#resizable {
       padding: 5px;
@@ -602,15 +606,45 @@ __DATA__
           yaml_auto_load_flag = 0;
         }
       });
-      var show_tmpl_var_flag = 1;
-      $('input[name="show_tmpl_var"]:checkbox').change( function () {
-        console.log(show_tmpl_var_flag);
-        console.log(this.checked);
-        if ( (this.checked ^ show_tmpl_var_flag) ) {
-          show_tmpl_var_flag = show_tmpl_var_flag ^ 1;
-          $('#tmpl_var_tool').toggle("clip")
+
+      /* toggle #id by name=show_id checkbox */
+      // initialize 
+      var visible_flag = {};
+      $('input[name^="show_"]:checkbox').each( function () {
+        visible_flag[this.name] = this.checked;
+      });
+      // event
+      $('input[name^="show_"]:checkbox').change( function () {
+        if ( (this.checked ^ visible_flag[this.name]) ) {
+          visible_flag[this.name] = visible_flag[this.name] ^ 1;
+          var target_id = this.name.replace(/^show_/,"");
+          $('#' + target_id ).toggle("clip");
+          toggle_hide_class("hide_" + target_id);
         }
       });
+      // toggle  hide_{id} class
+      function toggle_hide_class (class) {
+        var div_list = new Array ("tv_content", "tv_sidebar", "tv_menu_tmpl_var");
+        for(var i in div_list){
+          $("#" + div_list[i]).toggleClass(class);
+        }
+        resize_textarea();
+      }
+      // ajast textarea with 
+      function resize_textarea () {
+        if ($("#tv_content").hasClass("hide_tv_sidebar")) {
+          $('textarea').each( function () {
+            $(this).css("width","100%") 
+          });
+        }
+        else {
+          var width = $("#tv_sidebar").width();
+          $('textarea').each( function () {
+            $(this).css("width",$(window).width() - width - 40);
+            console.log($(this).css("width"));
+          });
+        }
+      }
       
       window.addEventListener("unload", function(){
           if(!child_window) return false; 
@@ -618,7 +652,7 @@ __DATA__
         }, false
       );
 
-      // autocomplete
+      /* autocomplete */
       $('#yaml_path').autocomplete({ 
         change: function(){ 
           if (yaml_auto_load_flag == 1) { load_variables(); }
@@ -685,6 +719,10 @@ __DATA__
         alert(ev.type);
       };
       $.ev.loop('/poll?path=[% path | uri %]&client_id=' +Math.random())
+
+
+      // initialize
+      resize_textarea();
     });
     function open_link (path) {
       var format = $('input:radio[name=format]:checked').val();
@@ -706,13 +744,14 @@ __DATA__
       [% end %]
       </ul>
   </div>
-  <div id="tv_content" class="ui-helper-clearfix">
+  <div id="tv_content">
     <div id="tv_menu" class="tv_menu">
       <input type="hidden" name="path"  id="path"   value="[% path %]">
-      <ul class="tv_menu">
+      <ul class="tv_menu ui-helper-clearfix">
         <li><span class="tv_menu_title">表示:</span></li>
         <ul>
-          <li><label for="show_tmpl_var">テンプレート変数ツール</label><input type="checkbox" name="show_tmpl_var" id="show_tmpl_var" checked="checked" value="1"></li>
+          <li><label for="show_tv_menu_tmpl_var">テンプレート変数</label><input type="checkbox" name="show_tv_menu_tmpl_var" id="show_tv_menu_tmpl_var" checked="checked" value="1"></li>
+          <li><label for="show_tv_sidebar">ファイルリスト</label><input type="checkbox" name="show_tv_sidebar" id="show_tv_sidebar" checked="checked" value="1"></li>
         </ul>
         <li><span class="tv_menu_title">format:</span></li>
         <ul>
@@ -729,29 +768,33 @@ __DATA__
           <li><input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
           <li><input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
       </ul>
-      <div class="tv_menu_title clearfix">ソース</div>
-      <div class="tv_menu_item">
+      <div class="tv_menu_title">ソース</div>
+      <div>
         <textarea id="source">[% string %]</textarea>
       </div>
-      <div id="tmpl_var_tool">
-        <div class="tv_menu_title">テンプレート変数ツール</div>
-        <div class="tv_menu_item">
-          <label for="yaml_auto_load">自動読込</label><input type="checkbox" name="yaml_auto_load" id="yaml_auto_load" checked="checked" value="1">
-          <label for="yaml_path">YAMLファイル</label><input type="text" name="yaml_path" id="yaml_path">
-          <label for="yaml_senario">ケース</label><input type="text" name="yaml_senario" id="yaml_senario">
-          <input type="button" id="cmd_load_variables" value="YAMLを読み込む">
-          <input type="button" id="cmd_save_variables" value="YAMLを保存する">
-          <input type="button" id="cmd_apply_variables" value="変数を適用する">
-          <textarea id="variables"></textarea>
-        </div>
+      <div id="tv_menu_tmpl_var">
+        <ul class="tv_menu">
+          <li><span class="tv_menu_title">テンプレート変数ツール</span></li>
+          <ul>
+            <li><label for="yaml_auto_load">自動読込</label><input type="checkbox" name="yaml_auto_load" id="yaml_auto_load" checked="checked" value="1"></li>
+            <li><label for="yaml_path">YAMLファイル</label><input type="text" name="yaml_path" id="yaml_path"></li>
+            <li><label for="yaml_senario">ケース</label><input type="text" name="yaml_senario" id="yaml_senario"></li>
+            <li><input type="button" id="cmd_load_variables" value="YAMLを読み込む"></li>
+            <li><input type="button" id="cmd_save_variables" value="YAMLを保存する"></li>
+            <li><input type="button" id="cmd_apply_variables" value="変数を適用する"></li>
+          </ul>
+        </ul>
+        <textarea id="variables" class="ui-helper-clearfix"></textarea>
       </div>
-      <div class="tv_menu_title">ソース</div>
-      <div class="tv_menu_item">
-        <input type="button" id="cmd_wopen"  value="別Windowで開く">
-        <input type="button" id="cmd_wclose" value="別Windowを閉じる">
+      <div id="tv_menu_misc">
+        <div class="tv_menu_title">その他</div>
+        <ul class="tv_menu">
+          <li><input type="button" id="cmd_wopen"  value="別Windowで開く"></li>
+          <li><input type="button" id="cmd_wclose" value="別Windowを閉じる"></li>
+        </ul>
       </div>
     </div>
-    <hr class="clearfix">
+    <hr>
     <div id="resizable">
       <div id="preview">show here</div>
     </div>
