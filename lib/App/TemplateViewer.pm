@@ -66,10 +66,9 @@ my $converters = {
     },
     tx => {
         process => sub {
-            my $text = shift;
+            my ( $text, $var ) = @_;
             my $tx   = Text::Xslate->new( module => ['Text::Xslate::Bridge::TT2Like'], );
-            my %vars = ( test => 'hogehoge' );
-            return $tx->render_string( $text, \%vars );
+            return $tx->render_string( $text, $var);
         },
         analize => sub {
             my $text = shift;
@@ -320,16 +319,18 @@ sub post {
     {
         $target_file = Path::Class::file( $config{data}, $path, $file );
     }
+    unless ( -d $target_file->parent->stringify ) { $target_file->parent->mkpath }
     if ($senario) {
         $yaml
             = -e $target_file->stringify
-            ? YAML::Any::LoadFile( $file->stringify )
+            ? YAML::Any::LoadFile( $target_file->stringify )
             : YAML::Any::Load '';
         $yaml->{$senario} = $yaml_tmp;
     }
     else {
         $yaml = $yaml_tmp;
     }
+    
     YAML::Any::DumpFile( $target_file->stringify, $yaml );
     return $self->write( { success => 1 } );
 }
@@ -458,13 +459,13 @@ __DATA__
       list-style-type: none;
       padding: 0px;
     }
-    div#tv_content {
+    div.tv_content {
       width: auto;
-//      float:   left;
-      position: relative;
+      float: left;
     }
-    .hide_tv_sidebar div#tv_content {
+    div.tv_content.hide_tv_sidebar {
       width: 100%;
+      clear: both;
     }
     body {
       margin: 10px;
@@ -478,6 +479,12 @@ __DATA__
     }
     div#resizable {
       padding: 5px;
+    }
+    dif.tv_preview {
+      width: auto;
+    }
+    dif.tv_preview.hide_tv_sidebar {
+      width: 100%;
     }
   </style>
   <link rel="Stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/themes/ui-darkness/jquery-ui.css" type="text/css" />
@@ -589,6 +596,11 @@ __DATA__
       $('#source').focus().keyup(function () { load_preview() });
       $('input[name="format"]:radio').change(function () { load_preview() });
       $('input[name="type"]:radio').change(function () { load_preview() });
+      $('input[name="change_path"]:button').click(function () {
+        console.log(this.id);
+        console.log($("#hidden_" + this.id).val() );
+        open_link( $("#hidden_" + this.id).val() );
+      });
       
       $('#cmd_wopen').click(function () { wopen () });
       $('#cmd_wclose').click(function () { wclose () });
@@ -623,18 +635,20 @@ __DATA__
       });
       // toggle  hide_{id} class
       function toggle_hide_class (class) {
+          console.log(class);
         var div_list = new Array ("tv_content", "tv_sidebar", "tv_menu_tmpl_var");
         for(var i in div_list){
           $("#" + div_list[i]).toggleClass(class);
         }
-        resize_textarea();
+        resize_all ();
       }
-      // ajast textarea with 
-      function resize_textarea () {
+      // ajast textarea and div.tv_preview
+      function resize_all () {
         if ($("#tv_content").hasClass("hide_tv_sidebar")) {
           $('textarea').each( function () {
             $(this).css("width","100%") 
           });
+          $(preview).css("width","100%");
         }
         else {
           var width = $("#tv_sidebar").width();
@@ -642,6 +656,7 @@ __DATA__
             $(this).css("width",$(window).width() - width - 40);
             console.log($(this).css("width"));
           });
+          $(preview).css("width",$(window).width() - width - 40);
         }
       }
       
@@ -723,7 +738,7 @@ __DATA__
       // initialize
       $(function () {
         load_preview();
-        resize_textarea();
+        resize_all();
       });
     });
     function open_link (path) {
@@ -737,17 +752,23 @@ __DATA__
 <body>
   <div id="tv_sidebar">
     <ul>
-      <li><a href="#" onclick="open_link('[% parent %]');">../</a></li>
+      [% cnt = 1 %]
+      <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="../"></li>
+          <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% parent %]">
       [% foreach dir in dirs %]
-      <li><a href="#" onclick="open_link('[% dir.resolve %]');">[% basename(dir) %]/</a></li>
+      [% cnt = cnt + 1 %]
+      <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(dir) %]/"></li>
+          <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% dir.resolve %]">
       [% end %]
       [% foreach file in files %]
-      <li><a href="#" onclick="open_link('[% file.resolve %]');">[% basename(file) %]</a></li>
+      [% cnt = cnt + 1 %]
+      <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(file) %]"></li>
+          <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% file.resolve %]">
       [% end %]
       </ul>
   </div>
-  <div id="tv_content">
-    <div id="tv_menu" class="tv_menu">
+  <div id="tv_content" class="tv_content">
+    <div id="tv_menu" class="tv_menu ui-helper-clearfix">
       <input type="hidden" name="path"  id="path"   value="[% path %]">
       <div class="ui-helper-clearfix">
         <ul class="tv_menu ui-helper-clearfix">
@@ -802,7 +823,7 @@ __DATA__
     </div>
     <hr>
     <div id="resizable">
-      <div id="preview">show here</div>
+      <div id="preview" class="tv_preview">show here</div>
     </div>
   </div>
   </body>
