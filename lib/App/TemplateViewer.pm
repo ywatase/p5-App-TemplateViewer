@@ -3,12 +3,14 @@ use YAML::Any;
 package App::TemplateViewer;
 use strict;
 use warnings;
-our $VERSION = '0.02';
+use version 0.77; our $VERSION = qv('v0.3.0');
 
 use Encode 'encode_utf8';
 use Text::Xslate;
 use Text::Xslate::Bridge::TT2Like;
 use Pod::Simple::XHTML;
+use Text::Markdown 'markdown';
+use Text::Xatena;
 use Path::Class;
 use Tatsumaki;
 use Tatsumaki::Error;
@@ -76,6 +78,19 @@ my $converters = {
             return "<pre>$content</pre>";
         },
     },
+
+    markdown => {
+        process => sub {
+            my $text = shift;
+            return markdown($text);
+        },
+    },
+    xatena => {
+        process => sub {
+            my $text = shift;
+            return Text::Xatena->new->format($text);
+        }
+    }
 };
 
 sub is_supported_format {
@@ -432,31 +447,35 @@ __DATA__
     <meta charset="utf-8" />
     <style>
     </style>
-    <title>[% path %]</title>
+    <title>App::TemplpateViewer</title>
   </head>
   <style>
-    .tv_menu {
-      font-family: "Consolas", "Courier New", Courier, mono, serif;
+    body {
+      margin:  2px;
+      padding: 2px;
+      background-color: #ffffff;
+      font-family:'ヒラギノ角ゴ Pro W3','Hiragino Kaku Gothic Pro','メイリオ',Meiryo,'ＭＳ Ｐゴシック',sans-serif;
       font-size: 12px;
     }
-    ul.tv_menu {
-      margin: 0px;
-      padding: 0px;
+    .tv_toolbar {
+      padding: 10px 4px;
+      margin:  2px;
     }
     .tv_menu_title {
       font-weight: bold;
     }
-    ul.tv_menu li {
-      list-style-type: none;
-      float:   left;
-    }
     div#tv_sidebar {
       float: left;
-      fon class="ui-helper-clearfix"t-family: "Consolas", "Courier New", Courier, mono, serif;
-      font-size: 12px;
+      font-size: smaller;
     }
-    div#tv_sidebar li {
+    div#tv_topmenu {
+      font-size: smaller;
+    }
+    .tv_sidebar_menu li {
       list-style-type: none;
+    }
+    .tv_sidebar_menu ul {
+      margin: 0px;
       padding: 0px;
     }
     div.tv_content {
@@ -467,11 +486,8 @@ __DATA__
       width: 100%;
       clear: both;
     }
-    body {
-      margin: 10px;
-      background-color: #ffffff;
-    }
     textarea {
+      margin-left: 2px;
       height: 100px;
     }
     .hide_tv_sidebar textarea {
@@ -480,14 +496,14 @@ __DATA__
     div#resizable {
       padding: 5px;
     }
-    dif.tv_preview {
+    div.tv_preview {
       width: auto;
     }
-    dif.tv_preview.hide_tv_sidebar {
+    div.tv_preview.hide_tv_sidebar {
       width: 100%;
     }
   </style>
-  <link rel="Stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/themes/ui-darkness/jquery-ui.css" type="text/css" />
+  <link rel="Stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/themes/redmond/jquery-ui.css" type="text/css" />
   <script type="text/javascript" src="https://www.google.com/jsapi"></script>
   <script type="text/javascript">google.load("jquery", "1.6.2");</script>
   <script type="text/javascript">google.load("jqueryui", "1.8.16");</script>
@@ -499,7 +515,29 @@ __DATA__
   <script type="text/javascript">
     $(function () {
       // jquery ui
-      $("input:radio, input:checkbox, input:button, a").button();
+      $("input:checkbox, input:button, a").button();
+      $("span[name^=buttonset_]").each(function () {
+        $(this).buttonset();
+      });
+      $("button.tv_help").each( function () {
+        $(this).button({
+          icons: { primary: "ui-icon-help" },
+          text: false,
+        });
+        $(this).click( function () {
+          var obj = $("#" + this.id + "_content");
+          if ( obj.dialog("isOpen") ) {
+            obj.dialog("close");
+          }
+          else {
+            obj.dialog("open");
+          }
+        });
+      });
+      $("div.tv_dialog").each( function () {
+        $(this).dialog({autoOpen: false});
+      });
+
       var child_window;
       var preview = $('#preview');
       $("#resizable").resizable({
@@ -653,10 +691,10 @@ __DATA__
         else {
           var width = $("#tv_sidebar").width();
           $('textarea').each( function () {
-            $(this).css("width",$(window).width() - width - 40);
+            $(this).css("width",$(window).width() - width - 18);
             console.log($(this).css("width"));
           });
-          $(preview).css("width",$(window).width() - width - 40);
+          $(preview).css("width",$(window).width() - width - 18);
         }
       }
       
@@ -749,83 +787,120 @@ __DATA__
       return false;
     }
   </script>
-<body>
-  <div id="tv_sidebar">
-    <ul>
-      [% cnt = 1 %]
-      <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="../"></li>
-          <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% parent %]">
-      [% foreach dir in dirs %]
-      [% cnt = cnt + 1 %]
-      <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(dir) %]/"></li>
-          <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% dir.resolve %]">
-      [% end %]
-      [% foreach file in files %]
-      [% cnt = cnt + 1 %]
-      <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(file) %]"></li>
-          <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% file.resolve %]">
-      [% end %]
-      </ul>
-  </div>
-  <div id="tv_content" class="tv_content">
-    <div id="tv_menu" class="tv_menu ui-helper-clearfix">
-      <input type="hidden" name="path"  id="path"   value="[% path %]">
-      <div class="ui-helper-clearfix">
-        <ul class="tv_menu ui-helper-clearfix">
-          <li><span class="tv_menu_title">表示:</span></li>
-          <ul>
-            <li><label for="show_tv_menu_tmpl_var">テンプレート変数</label><input type="checkbox" name="show_tv_menu_tmpl_var" id="show_tv_menu_tmpl_var" checked="checked" value="1"></li>
-            <li><label for="show_tv_sidebar">ファイルリスト</label><input type="checkbox" name="show_tv_sidebar" id="show_tv_sidebar" checked="checked" value="1"></li>
-          </ul>
-          <li><span class="tv_menu_title">format:</span></li>
-          <ul>
-            <li><input type="radio" name="format" id="radio1" value="tt2"[% if fmt == 'tt2' %] checked="checked"[% END %]><label for="radio1">Template-Toolkit</label></li>
-            <li><input type="radio" name="format" id="radio2" value="tx"[% if  fmt == 'tx' %]  checked="checked"[% END %]><label for="radio2">Text::Xslate</label></li>
-            <li><input type="radio" name="format" id="radio3" value="pod"[% if fmt == 'pod' %] checked="checked"[% END %]><label for="radio3">Pod</label></li>
-            <!--
-            <li><input type="radio" name="format" id="radio4" value="markdown"><label for="radio4">Markdown</label></li>
-            <li><input type="radio" name="format" id="radio5" value="xatena"><label for="radio5">はてな記法</label></li>
-            -->
-          </ul>
-          <li><span class="tv_menu_title">type:</span></li>
-          <ul>
-            <li><input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
-            <li><input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
-        </ul>
+  <body>
+    <div id="tv_body">
+      <div id="tv_topmenu">
+          <div id="tv_menu_top" class="tv_toolbar ui-widget-header ui-corner-all">
+              <button id="tv_menu_top_help" class="tv_help">トップメニューのヘルプ</button>
+              <span>表示</span>
+              <label for="show_tv_sidebar">ファイルリスト</label><input type="checkbox" name="show_tv_sidebar" id="show_tv_sidebar" checked="checked" value="1">
+              <label for="show_tv_menu_tmpl_var">テンプレート変数</label><input type="checkbox" name="show_tv_menu_tmpl_var" id="show_tv_menu_tmpl_var" checked="checked" value="1">
+          </div>
       </div>
-      <div class="ui-helper-clearfix">
-        <div class="tv_menu_title">ソース</div>
-        <div>
-          <textarea id="source">[% string %]</textarea>
+      <div id="tv_sidebar" class="tv_sidebar">
+        <div id="tv_sidebar_menu" class="tv_sidebar_menu">
+          <div id="tv_menu_filelist" class="tv_toolbar ui-widget-header ui-corner-all">
+            <ul>
+               [% cnt = 1 %]
+               <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="../"></li>
+                   <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% parent %]">
+               [% foreach dir in dirs %]
+               [% cnt = cnt + 1 %]
+               <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(dir) %]/"></li>
+                   <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% dir.resolve %]">
+               [% end %]
+               [% foreach file in files %]
+               [% cnt = cnt + 1 %]
+               <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(file) %]"></li>
+                   <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% file.resolve %]">
+               [% end %]
+             </ul>
+          </div>
         </div>
       </div>
-      <div id="tv_menu_tmpl_var">
-        <ul class="tv_menu">
-          <li><span class="tv_menu_title">テンプレート変数ツール</span></li>
-          <ul>
-            <li><label for="yaml_auto_load">自動読込</label><input type="checkbox" name="yaml_auto_load" id="yaml_auto_load" checked="checked" value="1"></li>
-            <li><label for="yaml_path">YAMLファイル</label><input type="text" name="yaml_path" id="yaml_path"></li>
-            <li><label for="yaml_senario">ケース</label><input type="text" name="yaml_senario" id="yaml_senario"></li>
-            <li><input type="button" id="cmd_load_variables" value="YAMLを読み込む"></li>
-            <li><input type="button" id="cmd_save_variables" value="YAMLを保存する"></li>
-            <li><input type="button" id="cmd_apply_variables" value="変数を適用する"></li>
-          </ul>
-        </ul>
-        <textarea id="variables" class="ui-helper-clearfix"></textarea>
+      <div id="tv_content" class="tv_content">
+        <div id="tv_menu" class="tv_menu">
+          <div id="tv_menu_main">
+            <div id="toolbar" class="tv_toolbar ui-widget-header ui-corner-all">
+              <button id="tv_menu_main_help" class="tv_help">メインメニューのヘルプ</button>
+              <span>format</span>
+              <span id="buttonset_format" name="buttonset_format">
+                <input type="radio" name="format" id="radio1" value="tt2"[% if fmt == 'tt2' %] checked="checked"[% END %]><label for="radio1">Template-Toolkit</label>
+                <input type="radio" name="format" id="radio2" value="tx"[% if  fmt == 'tx' %]  checked="checked"[% END %]><label for="radio2">Text::Xslate</label>
+                <input type="radio" name="format" id="radio3" value="pod"[% if fmt == 'pod' %] checked="checked"[% END %]><label for="radio3">Pod</label>
+                <input type="radio" name="format" id="radio4" value="markdown"[% if fmt == 'markdown' %] checked="checked"[% END %]><label for="radio4">Markdown</label>
+                <input type="radio" name="format" id="radio5" value="xatena"[% if fmt == 'xatena' %] checked="checked"[% END %]><label for="radio5">はてな記法</label>
+              </span>
+              <span>type</span>
+              <span id="buttonset_type" name="buttonset_type">
+                <input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
+                <input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
+              </span>
+              <span>window</span>
+              <input type="button" id="cmd_wopen"  value="別Windowで開く">
+              <input type="button" id="cmd_wclose" value="別Windowを閉じる">
+            </div>
+            <textarea id="source">[% string %]</textarea>
+          </div>
+          <div id="tv_menu_tmpl_var">
+            <div id="tv_menu_tmpl_var_toolbar" class="tv_toolbar ui-widget-header ui-corner-all">
+              <button id="tv_menu_tmpl_var_help" class="tv_help">テンプレート変数ツールのヘルプ</button>
+              <label for="yaml_path">ファイル</label><input type="text" name="yaml_path" id="yaml_path">
+              <label for="yaml_senario">ケース</label><input type="text" name="yaml_senario" id="yaml_senario">
+              <input type="button" id="cmd_save_variables" value="YAMLを保存する">
+              <input type="button" id="cmd_load_variables" value="YAMLを読み込む">
+              <input type="button" id="cmd_apply_variables" value="変数を適用する">
+              <label for="yaml_auto_load">自動読込</label><input type="checkbox" name="yaml_auto_load" id="yaml_auto_load" checked="checked" value="1">
+            </div>
+            <textarea id="variables"></textarea>
+          </div>
+        </div>
+        <hr>
+        <div id="resizable">
+          <div id="preview" class="tv_preview">show here</div>
+        </div>
       </div>
-      <div id="tv_menu_misc">
-        <div class="tv_menu_title">その他</div>
-        <ul class="tv_menu">
-          <li><input type="button" id="cmd_wopen"  value="別Windowで開く"></li>
-          <li><input type="button" id="cmd_wclose" value="別Windowを閉じる"></li>
+      <div id="tv_menu_tmpl_var_help_content" class="tv_dialog" title="テンプレート変数ツールのヘルプ">
+        <dl>
+          <dt>ファイル</dt>
+          <dd>YAMLファイル名を入力します。</dd>
+          <dt>ケース</dt>
+          <dd>YAMLファイル中のcase_で始まるものをケースとしてみなします。</dd>
+          <dt>自動読み込み</dt>
+          <dd>ファイル・ケースを入力すると自動的にファイルを読み込み、テンプレート変数を適用します。</dd>
+        </dl>
+      </div>
+      <div id="tv_menu_top_help_content" class="tv_dialog" title="テンプレートビューアーについて">
+        <h3>テンプレートビューアーについて</h3>
+        <p>すぎゃーんさんのリアルタイムプレビューをAmon2::Liteで作成しているのをみて見て作り始めた開発補助ツールです。</p>
+        <h3>特徴</h3>
+        <ul>
+          <li>cpanモジュールと同じインストール手法でインストールできます</li>
+          <li>テンプレート変数をYAML形式で記述することでテンプレートの条件分岐を再現できます</li>
+          <li>表示中のテンプレートをサーバ側で編集すると自動的にプレビューが更新されます</li>
         </ul>
+        <h3>トップメニューについて</h3>
+        <dl>
+          <dt>表示切替</dt>
+          <dd>ツールの表示・非表示を切り替えます。</dd>
+        </dl>
+      </div>
+      <div id="tv_menu_main_help_content" class="tv_dialog" title="メインメニューのヘルプ">
+        <dl>
+          <dt>Format</dt>
+          <dd>リアルタイムプレビューを行うのフォーマットを選択します。</dd>
+          <dt>Process</dt>
+          <dd>Formatで指定された形式のプレビューを表示します。</dd>
+          <dt>Analyze</dt>
+          <dd>Formatで指定された形式のファイルとして解析します。</dd>
+          <dt>windowを開く</dt>
+          <dd>別のウィンドウを開きます。Process選択時はテンプレートからHTMLを生成するため、本ツールと干渉することがあります。ディスプレイを2つ以上利用している場合オススメです。</dd>
+          <dt>windowを閉じる</dt>
+          <dd>別のウィンドウを閉じます。そのうちなくなります。</dd>
+        </dl>
       </div>
     </div>
-    <hr>
-    <div id="resizable">
-      <div id="preview" class="tv_preview">show here</div>
-    </div>
-  </div>
+    <input type="hidden" name="path"  id="path"   value="[% path %]">
   </body>
 </html>
 

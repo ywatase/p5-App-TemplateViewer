@@ -9,6 +9,8 @@ githubmeta;
 requires 'Text::Xslate';
 requires 'Text::Xslate::Bridge::TT2Like';
 requires 'Pod::Simple::XHTML';
+requires 'Text::Xatena';
+requires 'Text::Markdown';
 requires 'Template';
 requires 'Plack';
 requires 'Tatsumaki';
