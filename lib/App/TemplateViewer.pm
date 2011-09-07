@@ -589,7 +589,6 @@ __DATA__
       $('#source').focus().keyup(function () { load_preview() });
       $('input[name="format"]:radio').change(function () { load_preview() });
       $('input[name="type"]:radio').change(function () { load_preview() });
-      $(function () { load_preview() });
       
       $('#cmd_wopen').click(function () { wopen () });
       $('#cmd_wclose').click(function () { wclose () });
@@ -722,7 +721,10 @@ __DATA__
 
 
       // initialize
-      resize_textarea();
+      $(function () {
+        load_preview();
+        resize_textarea();
+      });
     });
     function open_link (path) {
       var format = $('input:radio[name=format]:checked').val();
@@ -747,30 +749,34 @@ __DATA__
   <div id="tv_content">
     <div id="tv_menu" class="tv_menu">
       <input type="hidden" name="path"  id="path"   value="[% path %]">
-      <ul class="tv_menu ui-helper-clearfix">
-        <li><span class="tv_menu_title">表示:</span></li>
-        <ul>
-          <li><label for="show_tv_menu_tmpl_var">テンプレート変数</label><input type="checkbox" name="show_tv_menu_tmpl_var" id="show_tv_menu_tmpl_var" checked="checked" value="1"></li>
-          <li><label for="show_tv_sidebar">ファイルリスト</label><input type="checkbox" name="show_tv_sidebar" id="show_tv_sidebar" checked="checked" value="1"></li>
+      <div class="ui-helper-clearfix">
+        <ul class="tv_menu ui-helper-clearfix">
+          <li><span class="tv_menu_title">表示:</span></li>
+          <ul>
+            <li><label for="show_tv_menu_tmpl_var">テンプレート変数</label><input type="checkbox" name="show_tv_menu_tmpl_var" id="show_tv_menu_tmpl_var" checked="checked" value="1"></li>
+            <li><label for="show_tv_sidebar">ファイルリスト</label><input type="checkbox" name="show_tv_sidebar" id="show_tv_sidebar" checked="checked" value="1"></li>
+          </ul>
+          <li><span class="tv_menu_title">format:</span></li>
+          <ul>
+            <li><input type="radio" name="format" id="radio1" value="tt2"[% if fmt == 'tt2' %] checked="checked"[% END %]><label for="radio1">Template-Toolkit</label></li>
+            <li><input type="radio" name="format" id="radio2" value="tx"[% if  fmt == 'tx' %]  checked="checked"[% END %]><label for="radio2">Text::Xslate</label></li>
+            <li><input type="radio" name="format" id="radio3" value="pod"[% if fmt == 'pod' %] checked="checked"[% END %]><label for="radio3">Pod</label></li>
+            <!--
+            <li><input type="radio" name="format" id="radio4" value="markdown"><label for="radio4">Markdown</label></li>
+            <li><input type="radio" name="format" id="radio5" value="xatena"><label for="radio5">はてな記法</label></li>
+            -->
+          </ul>
+          <li><span class="tv_menu_title">type:</span></li>
+          <ul>
+            <li><input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
+            <li><input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
         </ul>
-        <li><span class="tv_menu_title">format:</span></li>
-        <ul>
-          <li><input type="radio" name="format" id="radio1" value="tt2"[% if fmt == 'tt2' %] checked="checked"[% END %]><label for="radio1">Template-Toolkit</label></li>
-          <li><input type="radio" name="format" id="radio2" value="tx"[% if  fmt == 'tx' %]  checked="checked"[% END %]><label for="radio2">Text::Xslate</label></li>
-          <li><input type="radio" name="format" id="radio3" value="pod"[% if fmt == 'pod' %] checked="checked"[% END %]><label for="radio3">Pod</label></li>
-          <!--
-          <li><input type="radio" name="format" id="radio4" value="markdown"><label for="radio4">Markdown</label></li>
-          <li><input type="radio" name="format" id="radio5" value="xatena"><label for="radio5">はてな記法</label></li>
-          -->
-        </ul>
-        <li><span class="tv_menu_title">type:</span></li>
-        <ul>
-          <li><input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
-          <li><input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
-      </ul>
-      <div class="tv_menu_title">ソース</div>
-      <div>
-        <textarea id="source">[% string %]</textarea>
+      </div>
+      <div class="ui-helper-clearfix">
+        <div class="tv_menu_title">ソース</div>
+        <div>
+          <textarea id="source">[% string %]</textarea>
+        </div>
       </div>
       <div id="tv_menu_tmpl_var">
         <ul class="tv_menu">
