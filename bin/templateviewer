@@ -8,6 +8,8 @@ use Path::Class;
 use Cwd;
 
 use App::TemplateViewer;
+
+use Plack::Builder;
 use Plack::Runner;
 use version 0.77; our $VERSION = qv("v0.1.0");
 
@@ -16,19 +18,29 @@ my @plackup_args = ();
 sub parse_args {
     my @args         = @_;
     my %h            = ();
-    my @args_pattern = ( 'help|h', 'format|f=s', 'data|d=s', 'target|t=s', 'port|p=i' );
+    my @args_pattern = ( 'help|h', 'format|f=s', 'data|d=s', 'target|t=s', 'port|p=i', 'builder|b=s' );
     $h{format} = 'tt2';
-    if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); exit 0; }
-    if    ( exists $h{help} )    { pod2usage(1); exit 0; }
-    if    ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
+    if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
+    if ( exists $h{help} )    { pod2usage(1); return; }
+    if ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
         printf STDERR "%s is not supported\n", $h{format};
         printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
-        exit 0;
+        return;
+    }
+    if ( exists $h{builder} ) {
+        if ( not -f $h{builder} ) {
+            print STDERR "$h{builder} is not found";
+            return;
+        }
+        else {
+            $h{builder_app} = do $h{builder};
+
+        }
     }
     $h{target} ||= getcwd();
     if ( not -d $h{target} ) {
         printf STDERR "%s is not directory\n", $h{target};
-        exit 0;
+        return;
     }
     else {
         $h{target} = dir( $h{target} )->absolute->resolve;
@@ -50,11 +62,14 @@ sub parse_args {
     return \%h;
 }
 
-my $args    = parse_args(@ARGV);
+my $args    = parse_args(@ARGV) or exit 0;
 my $watcher = App::TemplateViewer::FileWatcher->new(watch => [$args->{target}]);
 $watcher->run;
 
-my $app = App::TemplateViewer->run($args);
+my $app = builder {
+    $h{builder_app};
+    App::TemplateViewer->run($args);
+};
 if ( $ENV{TEST} ) {
     return $app;
 }
@@ -97,6 +112,10 @@ set default format type. ( default: tt2 )
 =item B<--port|p> port_number
 
 this option is passed to plackup
+
+=item B<--builer|b> builder_file
+
+builder file is psgi file for set static file url and so on.
 
 =item B<--help|-h>
 
