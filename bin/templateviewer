@@ -16,12 +16,13 @@ use version 0.77; our $VERSION = qv("v0.1.0");
 my @plackup_args = ();
 
 sub parse_args {
-    my @args         = @_;
-    my %h            = ();
-    my @args_pattern = ( 'help|h', 'format|f=s', 'data|d=s', 'target|t=s', 'port|p=i', 'builder|b=s' );
+    my @args = @_;
+    my %h    = ();
+    my @args_pattern
+        = ( 'help|h', 'format|f=s', 'builder|b=s', 'data|d=s', 'target|t=s', 'port|p=i', 'static|s=s%' );
     $h{format} = 'tt2';
     if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
-    if ( exists $h{help} )    { pod2usage(1); return; }
+    if ( exists $h{help} ) { pod2usage(1); return; }
     if ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
         printf STDERR "%s is not supported\n", $h{format};
         printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
@@ -32,9 +33,16 @@ sub parse_args {
             print STDERR "$h{builder} is not found";
             return;
         }
-        else {
-            $h{builder_app} = do $h{builder};
-
+    }
+    if ( exists $h{static} and 'HASH' eq ref $h{static} ) {
+        while ( my ( $k, $v ) = each %{ $h{static} } ) {
+            if ( not -d $v ) {
+                print STDERR "$v is not directory";
+                return;
+            }
+            else {
+                $v = dir($v)->absolute->resolve;
+            }
         }
     }
     $h{target} ||= getcwd();
@@ -55,24 +63,39 @@ sub parse_args {
 
     # set plackup_args
     foreach my $k (qw(port)) {
-        if ( exists $h{$k} ){
+        if ( exists $h{$k} ) {
             push @plackup_args, "--$k", delete $h{$k};
         }
     }
     return \%h;
 }
 
-my $args    = parse_args(@ARGV) or exit 0;
-my $watcher = App::TemplateViewer::FileWatcher->new(watch => [$args->{target}]);
-$watcher->run;
-
-my $app = builder {
-    $h{builder_app};
-    App::TemplateViewer->run($args);
-};
-if ( $ENV{TEST} ) {
-    return $app;
+sub build_static_path {
+    my ( $app, $h ) = @_;
+    while ( my ( $k, $v ) = each %$h ) {
+        $app = Plack::Middleware::Static->wrap( $app, path => qr($k), root => $v );
+    }
+    $app;
 }
+
+# main
+
+my $args = parse_args(@ARGV) or exit 0;
+
+App::TemplateViewer::FileWatcher->new( watch => [ $args->{target} ] )->run;
+
+my $app = App::TemplateViewer->run($args);
+
+if ( exists $args->{static} ) {
+    $app = build_static_path( $app, $args->{static} );
+}
+if ( exists $args->{builder} ) {
+    $app = builder {
+        do $args->{builder};
+        $app;
+    }
+}
+
 my $runner = Plack::Runner->new;
 $runner->parse_options(@plackup_args);
 $runner->run($app);
@@ -113,9 +136,24 @@ set default format type. ( default: tt2 )
 
 this option is passed to plackup
 
-=item B<--builer|b> builder_file
+=item B<--static|s> path_info=path_to_file
 
-builder file is psgi file for set static file url and so on.
+this option can set multiple.
+
+this option path to Plack::Middleware::Static like
+
+  Plack::Middleware::Static->wrap($app, path => qr(path_info), root => 'path_to_file');
+
+=item B<--builer|b> builder_file
+ 
+builder file for set static file url. this file will do in builder block.
+
+    #!perl
+    use Plack::Builder;
+    use File::Basename;
+    use File::Spec;
+    enable "Plack::Middleware::Static",
+      path => qr{^/images|js|css|static/}, root => File::Spec->catfile(dirname(__FILE__), 'htdocs');
 
 =item B<--help|-h>
 

@@ -1,0 +1,10 @@
+<html>
+<body>
+: if $test  {
+ <: $test :>
+: }
+: if $test2 {
+ <: $test2 :>
+: }
+</body>
+</html>

@@ -1,0 +1,8 @@
+#!/bin/sh
+
+_run () {
+  local ROOT="$(dirname $0)/../"
+  env TATSUMAKI_DEBUG=1 PERL5LIB="$ROOT/lib" $ROOT/bin/templateviewer $@
+}
+
+_run $@
