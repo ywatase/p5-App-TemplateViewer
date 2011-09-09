@@ -321,6 +321,8 @@ sub post {
 package App::TemplateViewer::SaveVarsHandler;
 use base qw(Tatsumaki::Handler);
 
+use Carp;
+
 sub post {
     my ($self)   = @_;
     my $file     = $self->request->param('file');
@@ -330,11 +332,11 @@ sub post {
     my $yaml;
 
     my $target_file = Path::Class::file( $path, $file );
-    if (not $target_file->parent->subsumes( Path::Class::dir( $config{data} )->resolve->absolute ) )
+    if (not $target_file->parent->subsumes( Path::Class::dir( $config{data} )) )
     {
         $target_file = Path::Class::file( $config{data}, $path, $file );
     }
-    unless ( -d $target_file->parent->stringify ) { $target_file->parent->mkpath }
+    unless ( -d $target_file->parent->stringify ) { $target_file->parent->mkpath or croak "Can't create directory: " . $target_file->parent}
     if ($senario) {
         $yaml
             = -e $target_file->stringify
