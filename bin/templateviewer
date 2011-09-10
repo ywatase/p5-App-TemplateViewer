@@ -6,6 +6,7 @@ use Getopt::Long qw(GetOptionsFromArray :config gnu_getopt auto_version);
 use Pod::Usage;
 use Path::Class;
 use Cwd;
+use Carp;
 
 use App::TemplateViewer;
 
@@ -19,7 +20,7 @@ sub parse_args {
     my @args = @_;
     my %h    = ();
     my @args_pattern
-        = ( 'help|h', 'format|f=s', 'builder|b=s', 'data|d=s', 'target|t=s', 'port|p=i', 'static|s=s%' );
+        = ( 'help|h', 'format|f=s', 'builder|b=s', 'data|d=s', 'target|t=s', 'port|p=i', 'static|s=s%', 'init' );
     $h{format} = 'tt2';
     if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
     if ( exists $h{help} ) { pod2usage(1); return; }
@@ -79,8 +80,13 @@ sub build_static_path {
 }
 
 # main
+if ( $ENV{DEBUG} ) {
+    $Carp::Verbose = 1;
+}
 
 my $args = parse_args(@ARGV) or exit 0;
+
+App::TemplateViewer->init if $args->{init};
 
 App::TemplateViewer::FileWatcher->new( watch => [ $args->{target} ] )->run;
 

@@ -15,11 +15,18 @@ use Path::Class;
 use Tatsumaki;
 use Tatsumaki::Error;
 use Tatsumaki::Application;
+use Plack::Middleware::Static;
 use Carp;
 use YAML::Any;
 use File::Basename;
 
 my %config = ();
+
+sub new {
+    my $class = shift;
+    my %args = @_ == 1 ? %{ $_[0] } : @_;
+    bless {%args}, $class;
+}
 
 sub run {
     my ( $class, $args ) = @_;
@@ -35,8 +42,12 @@ sub run {
             "/"                  => 'App::TemplateViewer::RootHandler',
         ]
     );
-    $app->static_path( dirname(__FILE__) . "/../../static" );
-    return $app->psgi_app;
+    $app = $app->psgi_app;
+    warn have_local_static_files();
+    if (have_local_static_files()) {
+        $app = Plack::Middleware::Static->wrap($app, path => sub { s|^/template_viewer_static/|| }, root => config_dir()->subdir('static')->stringify);
+    }
+    return $app;
 }
 
 my $converters = {
@@ -93,6 +104,93 @@ my $converters = {
     }
 };
 
+my $static_files = {
+    jquery          => {
+        url => q|https://ajax.googleapis.com/ajax/libs/jquery/1.6.3/jquery.min.js|
+    },
+    jquery_ui       => {
+        url => q|http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js|
+    },
+    jquery_ui_theme => {
+        url => q|http://jquery-ui.googlecode.com/files/jquery-ui-themes-1.8.16.zip|,
+        post => sub {
+            ! system 'unzip', $_[0] or die $!;
+        },
+    },
+};
+
+sub config_dir {
+    return  dir($ENV{HOME}, '.templateviewer');
+}
+
+sub have_local_static_files {
+    my ($self) = @_;
+    foreach my $v (values %$static_files) {
+        warn config_dir()->file('static', basename $v->{url})->stringify;
+        return 0 if not -e config_dir()->file('static', basename $v->{url})->stringify;
+    }
+    return 1;
+}
+
+sub init {
+    my ($self) = @_;
+    if ( not ref $self ) {
+        $self = $self->new;
+    }
+    $self->make_config;
+    $self->get_static_files;
+}
+
+sub make_config {
+    my ($self) = @_;
+    -e $self->config_dir->stringify or $self->config_dir->mkpath;
+}
+
+sub get_config {
+    my ($self) = @_;
+}
+
+sub get_static_files {
+    my ($self) = @_;
+    require Cwd;
+    my $current_dir = Cwd::getcwd;
+    my $static_dir  = $self->config_dir->subdir('static');
+    -e $static_dir->stringify or $static_dir->mkpath;
+    chdir $static_dir  or croak "chdir error: $!";
+    while ( my ( $k, $v ) = each %$static_files ) {
+        $self->_download ( $v->{url} );
+        exists $v->{post} and $v->{post}->(basename $v->{url});
+    }
+    chdir $current_dir;
+}
+
+sub _download {
+    my ($self, $url) = @_;
+    $self->{_http_client} ||= _get_http_client() or croak "supported http client is not found";
+    $self->{_http_client}->($url);
+}
+sub _get_http_client {
+    my %clients = (
+        curl => sub {
+            my ($url) = @_;
+            ! system('curl' ,'-LO', $url) or croak "failed to download $url";
+        },
+        wget => sub {
+            my ($url) = @_;
+            ! system('wget' ,'-LO', $url) or croak "failed to download $url";
+		},
+    );
+    foreach my $k (qw(curl wget)) {
+        if ( _can_run_by_shell($k) ) {
+            return $clients{$k};
+        }
+    }
+    return;
+}
+sub _can_run_by_shell {
+    return not (system("which $_[0] >/dev/null 2>&1"));
+}
+
 sub is_supported_format {
     my ( $self, $format ) = @_;
     return $converters->{$format} ? 1 : 0;
@@ -132,6 +230,7 @@ sub _is_yaml {
     }
     return @yaml;
 }
+
 
 package App::TemplateViewer::FileWatcher;
 use Tatsumaki::MessageQueue;
@@ -433,6 +532,7 @@ sub get {
                 string   => $string,
                 fmt      => $fmt,
                 type     => $type,
+                have_local_static_files => App::TemplateViewer->have_local_static_files, 
             },
         )
     );
@@ -505,10 +605,16 @@ __DATA__
       width: 100%;
     }
   </style>
+  [% if have_local_static_files %]
+  <link rel="Stylesheet" href="/template_viewer_static/jquery-ui-themes-1.8.16/themes/redmond/jquery-ui.css" type="text/css" />
+  <script type="text/javascript" src="/template_viewer_static/jquery.min.js"></script>
+  <script type="text/javascript" src="/template_viewer_static/jquery-ui.min.js"></script>
+  [% else %]
   <link rel="Stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/themes/redmond/jquery-ui.css" type="text/css" />
   <script type="text/javascript" src="https://www.google.com/jsapi"></script>
   <script type="text/javascript">google.load("jquery", "1.6.2");</script>
   <script type="text/javascript">google.load("jqueryui", "1.8.16");</script>
+  [% end %]
   <script type="text/javascript">
     <!--
     [% include "jquery_ev.tt" %]
