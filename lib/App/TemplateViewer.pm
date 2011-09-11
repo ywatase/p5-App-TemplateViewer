@@ -137,17 +137,13 @@ sub init {
     if ( not ref $self ) {
         $self = $self->new;
     }
-    $self->make_config;
+    $self->make_config_dir;
     $self->get_static_files;
 }
 
-sub make_config {
+sub make_config_dir {
     my ($self) = @_;
     -e $self->config_dir->stringify or $self->config_dir->mkpath;
-}
-
-sub get_config {
-    my ($self) = @_;
 }
 
 sub get_static_files {
