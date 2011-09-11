@@ -146,14 +146,18 @@ set data directory. ( default: /tmp/templateviewer/ )
 
 set default format type. ( default: tt2 )
 
+=item B<--[no]sync> 
+
+sync on/off switch.
+if sync is on (default), on updating target file, auto-update textarea and preview.
+
 =item B<--port|p> port_number
 
 this option is passed to plackup
 
-=item B<--static|s> path_info=path_to_file
+=item B<--static|s> path_info=path_to_file [--static path_info2=path_to_file2
 
-this option can set multiple.
-
+this option can set multiple args.
 this option path to Plack::Middleware::Static like
 
   Plack::Middleware::Static->wrap($app, path => qr(path_info), root => 'path_to_file');
