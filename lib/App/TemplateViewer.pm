@@ -529,6 +529,7 @@ sub get {
                 fmt      => $fmt,
                 type     => $type,
                 have_local_static_files => App::TemplateViewer->have_local_static_files, 
+                sync     => $config{sync} || undef,
             },
         )
     );
@@ -601,19 +602,19 @@ __DATA__
       width: 100%;
     }
   </style>
-  [% if have_local_static_files %]
+  [% IF have_local_static_files %]
   <link rel="Stylesheet" href="/template_viewer_static/jquery-ui-themes-1.8.16/themes/redmond/jquery-ui.css" type="text/css" />
   <script type="text/javascript" src="/template_viewer_static/jquery.min.js"></script>
   <script type="text/javascript" src="/template_viewer_static/jquery-ui.min.js"></script>
-  [% else %]
+  [% ELSE %]
   <link rel="Stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/themes/redmond/jquery-ui.css" type="text/css" />
   <script type="text/javascript" src="https://www.google.com/jsapi"></script>
   <script type="text/javascript">google.load("jquery", "1.6.2");</script>
   <script type="text/javascript">google.load("jqueryui", "1.8.16");</script>
-  [% end %]
+  [% END %]
   <script type="text/javascript">
     <!--
-    [% include "jquery_ev.tt" %]
+    [% INCLUDE "jquery_ev.tt" %]
     // -->
   </script>
   <script type="text/javascript">
@@ -759,6 +760,14 @@ __DATA__
           yaml_auto_load_flag = 0;
         }
       });
+      $('input[name="file_sync"]:checkbox').change( function () {
+        if(this.checked){
+          evloop_start();
+        }
+        else{
+          evloop_stop();
+        }
+      });
 
       /* toggle #id by name=show_id checkbox */
       // initialize 
@@ -874,13 +883,20 @@ __DATA__
       $.ev.handlers.message = function (ev) {
         alert(ev.type);
       };
-      $.ev.loop('/poll?path=[% path | uri %]&client_id=' +Math.random())
-
+      function evloop_start () { 
+        $.ev.loop('/poll?path=[% path | uri %]&client_id=' +Math.random())
+      }
+      function evloop_stop () { 
+        $.ev.stop();
+      }
 
       // initialize
       $(function () {
         load_preview();
         resize_all();
+        [% IF sync %]
+        evloop_start();
+        [% END %]
       });
     });
     function open_link (path) {
@@ -908,16 +924,16 @@ __DATA__
                [% cnt = 1 %]
                <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="../"></li>
                    <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% parent %]">
-               [% foreach dir in dirs %]
+               [% FOREACH dir IN dirs %]
                [% cnt = cnt + 1 %]
                <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(dir) %]/"></li>
                    <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% dir.resolve %]">
-               [% end %]
-               [% foreach file in files %]
+               [% END %]
+               [% FOREACH file IN files %]
                [% cnt = cnt + 1 %]
                <li><input type="button" name="change_path" id="change_path_[% cnt %]" value="[% basename(file) %]"></li>
                    <input type="hidden" name="hidden_change_path" id="hidden_change_path_[% cnt %]" value="[% file.resolve %]">
-               [% end %]
+               [% END %]
              </ul>
           </div>
         </div>
@@ -929,20 +945,22 @@ __DATA__
               <button id="tv_menu_main_help" class="tv_help">メインメニューのヘルプ</button>
               <span>format</span>
               <span id="buttonset_format" name="buttonset_format">
-                <input type="radio" name="format" id="radio1" value="tt2"[% if fmt == 'tt2' %] checked="checked"[% END %]><label for="radio1">Template-Toolkit</label>
-                <input type="radio" name="format" id="radio2" value="tx"[% if  fmt == 'tx' %]  checked="checked"[% END %]><label for="radio2">Text::Xslate</label>
-                <input type="radio" name="format" id="radio3" value="pod"[% if fmt == 'pod' %] checked="checked"[% END %]><label for="radio3">Pod</label>
-                <input type="radio" name="format" id="radio4" value="markdown"[% if fmt == 'markdown' %] checked="checked"[% END %]><label for="radio4">Markdown</label>
-                <input type="radio" name="format" id="radio5" value="xatena"[% if fmt == 'xatena' %] checked="checked"[% END %]><label for="radio5">はてな記法</label>
+                <input type="radio" name="format" id="radio1" value="tt2"[% IF fmt == 'tt2' %] checked="checked"[% END %]><label for="radio1">Template-Toolkit</label>
+                <input type="radio" name="format" id="radio2" value="tx"[% IF  fmt == 'tx' %]  checked="checked"[% END %]><label for="radio2">Text::Xslate</label>
+                <input type="radio" name="format" id="radio3" value="pod"[% IF fmt == 'pod' %] checked="checked"[% END %]><label for="radio3">Pod</label>
+                <input type="radio" name="format" id="radio4" value="markdown"[% IF fmt == 'markdown' %] checked="checked"[% END %]><label for="radio4">Markdown</label>
+                <input type="radio" name="format" id="radio5" value="xatena"[% IF fmt == 'xatena' %] checked="checked"[% END %]><label for="radio5">はてな記法</label>
               </span>
               <span>type</span>
               <span id="buttonset_type" name="buttonset_type">
-                <input type="radio" name="type"   id="radio_type1" value="process"[% if type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
-                <input type="radio" name="type"   id="radio_type2" value="analize"[% if type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
+                <input type="radio" name="type"   id="radio_type1" value="process"[% IF type == 'process' %] checked="checked"[% END %]><label for="radio_type1">Process</label></li>
+                <input type="radio" name="type"   id="radio_type2" value="analize"[% IF type == 'analize' %] checked="checked"[% END %]><label for="radio_type2">Analize</label></li>
               </span>
               <span>window</span>
               <input type="button" id="cmd_wopen"  value="別Windowで開く">
-              <input type="button" id="cmd_wclose" value="別Windowを閉じる">
+              [% IF sync %]
+              <input type="checkbox" id="file_sync" name="file_sync" value="sync" checked="checked"><label for="file_sync">ファイル同期</label>
+              [% END %]
             </div>
             <textarea id="source">[% string %]</textarea>
           </div>
@@ -999,8 +1017,10 @@ __DATA__
           <dd>Formatで指定された形式のファイルとして解析します。</dd>
           <dt>windowを開く</dt>
           <dd>別のウィンドウを開きます。Process選択時はテンプレートからHTMLを生成するため、本ツールと干渉することがあります。ディスプレイを2つ以上利用している場合オススメです。</dd>
-          <dt>windowを閉じる</dt>
-          <dd>別のウィンドウを閉じます。そのうちなくなります。</dd>
+          [% IF sync %]
+          <dt>ファイル同期</dt>
+          <dd>サーバ側のファイル編集時のプレビューOn/Offを選択します。</dd>
+          [% END %]
         </dl>
       </div>
     </div>
