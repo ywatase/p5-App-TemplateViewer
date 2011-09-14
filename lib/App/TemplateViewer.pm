@@ -6,6 +6,7 @@ use warnings;
 use version 0.77; our $VERSION = qv('v0.3.0');
 
 use Encode 'encode_utf8';
+use Template;
 use Text::Xslate;
 use Text::Xslate::Bridge::TT2Like;
 use Pod::Simple::XHTML;
@@ -65,11 +66,9 @@ my $converters = {
     tt2 => {
         process => sub {
             my ( $text, $var ) = @_;
-            my $tx = Text::Xslate->new(
-                syntax => 'TTerse',
-                module => ['Text::Xslate::Bridge::TT2Like'],
-            );
-            return $tx->render_string( $text, $var );
+            my $tt = Template->new($config{TT}) or croak $Template::ERROR;
+            my $html = $tt->process(\$text)     or croak $tt->error();
+            return $html;
         },
         analize => sub {
             my $text = shift;
@@ -102,6 +101,17 @@ my $converters = {
             return Text::Xatena->new->format($text);
         }
     }
+};
+$converters->{tterse} = {
+    process => sub {
+        my ( $text, $var ) = @_;
+        my $tx = Text::Xslate->new(
+            syntax => 'TTerse',
+            module => ['Text::Xslate::Bridge::TT2Like'],
+        );
+        return $tx->render_string( $text, $var );
+    },
+    analize => $converters->{tt2}->{analize},
 };
 
 my $static_files = {
@@ -666,7 +676,7 @@ __DATA__
       function load_preview () {
         var text      = $('#source').val();
         var variables = $('#variables').val();
-        var format    = $('input:radio[name=format]:checked').val();
+        var format    = $('#selectbox_format option:selected').val();
         var type      = $('input:radio[name=type]:checked').val();
         $.ajax({
           url: '/preview',
@@ -746,7 +756,7 @@ __DATA__
     
       // event
       $('#source').focus().keyup(function () { load_preview() });
-      $('input[name="format"]:radio').change(function () { load_preview() });
+      $('#selectbox_format option:selected').change(function () { load_preview() });
       $('input[name="type"]:radio').change(function () { load_preview() });
       $('input[name="change_path"]:button').click(function () {
         console.log(this.id);
@@ -909,7 +919,7 @@ __DATA__
       });
     });
     function open_link (path) {
-      var format = $('input:radio[name=format]:checked').val();
+      var format = $('#selectbox_format option:selected').val();
       var type   = $('input:radio[name=type]:checked').val();
       var url    = '?format=' + format + '&type=' + type + '&path=' + path;
       window.open(url, "_self");
