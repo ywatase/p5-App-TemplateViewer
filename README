@@ -1,16 +1,48 @@
 NAME
-    App::TemplateViewer -
+    App::TemplateViewer - template viewer
 
 SYNOPSIS
-      use App::TemplateViewer;
+      templateviewer -t target_directory
 
 DESCRIPTION
-    App::TemplateViewer is
+    templateviewer is a script to show realtime preview of templates.
+
+      templateviewer
+
+    start plack server, then you can access by browser
+    http://localhost:5000/.
+
+  sync textarea edit to preview
+    if you change texarea on templateviewer, template viewer sync preview
+    immediately.
+
+  sync local edit to preview
+    if you change template file, templateviewer sync preview immediately.
+
+  apply yaml to template variables
+    you can apply hashref from yaml to template. you check condition of
+    template easily.
+
+INSTALLTION
+      perl Makefile.PL
+      cpanm --installdeps .
+      make install
+
+    to see command help, run
+
+      templateviewer --help
+
+DEPENDENCIES
+    Tatsumaki, Plack, Path::Class Text::Xslate,
+    Text::Xslate::Bridge::TT2Like Pod::Simple::XHTML, Text::Markdown
+    Text::Xatena, Template, Getopt::Long
 
 AUTHOR
     ywatase <ywatase@gmail.com>
 
 SEE ALSO
+    Tatsumaki
+
 LICENSE
     This library is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.

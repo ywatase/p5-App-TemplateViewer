@@ -1,20 +1,56 @@
 # NAME
 
-App::TemplateViewer -
+App::TemplateViewer - template viewer
 
 # SYNOPSIS
 
-  use App::TemplateViewer;
+  templateviewer -t target_directory
 
 # DESCRIPTION
 
-App::TemplateViewer is
+templateviewer is a script to show realtime preview of templates.
+
+  templateviewer
+
+start plack server, then you can access by browser http://localhost:5000/.
+
+## sync textarea edit to preview
+
+if you change texarea on templateviewer, template viewer sync preview immediately.
+
+## sync local edit to preview
+
+if you change template file, templateviewer sync preview immediately.
+
+## apply yaml to template variables
+
+you can apply hashref from yaml to template.
+you check condition of template easily.
+
+# INSTALLTION
+
+  perl Makefile.PL
+  cpanm --installdeps .
+  make install
+
+to see command help, run
+
+  templateviewer --help
+
+# DEPENDENCIES
+
+[Tatsumaki](http://search.cpan.org/perldoc?Tatsumaki), [Plack](http://search.cpan.org/perldoc?Plack), [Path::Class](http://search.cpan.org/perldoc?Path::Class)
+[Text::Xslate](http://search.cpan.org/perldoc?Text::Xslate), [Text::Xslate::Bridge::TT2Like](http://search.cpan.org/perldoc?Text::Xslate::Bridge::TT2Like)
+[Pod::Simple::XHTML](http://search.cpan.org/perldoc?Pod::Simple::XHTML), [Text::Markdown](http://search.cpan.org/perldoc?Text::Markdown)
+[Text::Xatena](http://search.cpan.org/perldoc?Text::Xatena), [Template](http://search.cpan.org/perldoc?Template), [Getopt::Long](http://search.cpan.org/perldoc?Getopt::Long)
 
 # AUTHOR
 
 ywatase <ywatase@gmail.com>
 
 # SEE ALSO
+
+[Tatsumaki](http://search.cpan.org/perldoc?Tatsumaki)
 
 # LICENSE
 
