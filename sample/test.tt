@@ -1,10 +1,11 @@
 <html>
 <body>
-[% if test %]
+<h1>[% test %]</h1>
+[% IF test %]
 [% test %]
-[% end %]
-[% if test2 %]
+[% END %]
+[% IF test2 %]
 [% test2 %]
-[% end %]
+[% END %]
 </body>
 </html>

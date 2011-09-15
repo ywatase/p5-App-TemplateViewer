@@ -67,7 +67,8 @@ my $converters = {
         process => sub {
             my ( $text, $var ) = @_;
             my $tt = Template->new($config{TT}) or croak $Template::ERROR;
-            my $html = $tt->process(\$text)     or croak $tt->error();
+            my $html;
+            $tt->process(\$text, $var, \$html)  or croak $tt->error();
             return $html;
         },
         analize => sub {
