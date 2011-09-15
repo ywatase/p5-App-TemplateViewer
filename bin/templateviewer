@@ -22,7 +22,7 @@ sub parse_args {
         = ( 'help|h', 'format|f=s', 'builder|b=s', 'data|d=s', 'target|t=s', 'port|p=i', 'static|s=s%', 'init', 'sync!' );
     my %h = (
         format => 'tt2',
-        sysc   => 1,
+        sync   => 1,
     );
     if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
     if ( exists $h{help} ) { pod2usage(1); return; }
