@@ -82,7 +82,6 @@ sub parse_args {
         _check_file($h{config}) or return;
         %cfg = %{do delete $h{config}};
     }
-    use Data::Dumper; warn Dumper \%cfg;
 
     # set default for template variables
     {
