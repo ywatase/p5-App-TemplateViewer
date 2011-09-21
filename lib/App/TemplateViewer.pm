@@ -44,7 +44,7 @@ sub run {
         ]
     );
     $app = $app->psgi_app;
-    warn have_local_static_files();
+
     if (have_local_static_files()) {
         $app = Plack::Middleware::Static->wrap($app, path => sub { s|^/template_viewer_static/|| }, root => config_dir()->subdir('static')->stringify);
     }
@@ -66,7 +66,7 @@ my $converters = {
     tt2 => {
         process => sub {
             my ( $text, $var ) = @_;
-            my $tt = Template->new($config{TT}) or croak $Template::ERROR;
+            my $tt = Template->new(%{$config{tv}{tt2}}) or croak $Template::ERROR;
             my $html;
             $tt->process(\$text, $var, \$html)  or croak $tt->error();
             return $html;
@@ -80,7 +80,7 @@ my $converters = {
     tx => {
         process => sub {
             my ( $text, $var ) = @_;
-            my $tx   = Text::Xslate->new( module => ['Text::Xslate::Bridge::TT2Like'], );
+            my $tx   = Text::Xslate->new( module => ['Text::Xslate::Bridge::TT2Like'], %{$config{tv}{tx}});
             return $tx->render_string( $text, $var);
         },
         analize => sub {
@@ -109,6 +109,7 @@ $converters->{tterse} = {
         my $tx = Text::Xslate->new(
             syntax => 'TTerse',
             module => ['Text::Xslate::Bridge::TT2Like'],
+            %{$config{tv}{tterse}},
         );
         return $tx->render_string( $text, $var );
     },
@@ -137,7 +138,6 @@ sub config_dir {
 sub have_local_static_files {
     my ($self) = @_;
     foreach my $v (values %$static_files) {
-        warn config_dir()->file('static', basename $v->{url})->stringify;
         return 0 if not -e config_dir()->file('static', basename $v->{url})->stringify;
     }
     return 1;

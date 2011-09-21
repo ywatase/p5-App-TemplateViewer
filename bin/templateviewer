@@ -7,6 +7,7 @@ use Pod::Usage;
 use Path::Class;
 use Cwd;
 use Carp;
+use Data::Dumper;
 
 use App::TemplateViewer;
 
@@ -14,79 +15,12 @@ use Plack::Builder;
 use Plack::Runner;
 use version 0.77; our $VERSION = qv("v0.1.0");
 
-my @plackup_args = ();
-
-sub parse_args {
-    my @args = @_;
-    my @args_pattern
-        = ( 'help|h', 'format|f=s', 'builder|b=s', 'data|d=s', 'target|t=s', 'port|p=i', 'static|s=s%', 'init', 'sync!' );
-    my %h = (
-        format => 'tt2',
-        sync   => 1,
-    );
-    if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
-    if ( exists $h{help} ) { pod2usage(1); return; }
-    if ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
-        printf STDERR "%s is not supported\n", $h{format};
-        printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
-        return;
-    }
-    if ( exists $h{builder} ) {
-        if ( not -f $h{builder} ) {
-            print STDERR "$h{builder} is not found";
-            return;
-        }
-    }
-    if ( exists $h{static} and 'HASH' eq ref $h{static} ) {
-        while ( my ( $k, $v ) = each %{ $h{static} } ) {
-            if ( not -d $v ) {
-                print STDERR "$v is not directory";
-                return;
-            }
-            else {
-                $v = dir($v)->absolute->resolve;
-            }
-        }
-    }
-    $h{target} ||= getcwd();
-    if ( not -d $h{target} ) {
-        printf STDERR "%s is not directory\n", $h{target};
-        return;
-    }
-    else {
-        $h{target} = dir( $h{target} )->absolute->resolve;
-    }
-
-    if ( @args > 0 ) {
-        @plackup_args = @args;
-    }
-
-    # TODO temp
-    $h{data} ||= '/tmp/templateviewer';
-
-    # set plackup_args
-    foreach my $k (qw(port)) {
-        if ( exists $h{$k} ) {
-            push @plackup_args, "--$k", delete $h{$k};
-        }
-    }
-    return \%h;
-}
-
-sub build_static_path {
-    my ( $app, $h ) = @_;
-    while ( my ( $k, $v ) = each %$h ) {
-        $app = Plack::Middleware::Static->wrap( $app, path => qr($k), root => $v );
-    }
-    $app;
-}
-
 # main
 if ( $ENV{DEBUG} ) {
     $Carp::Verbose = 1;
 }
 
-
+my @plackup_args = (); #TODO : ugry
 my $args = parse_args(@ARGV) or exit 0;
 
 if ( $args->{init} ) {
@@ -98,21 +32,124 @@ elsif ( $args->{sync} ) {
 }
 
 
+# setup plack app
 my $app = App::TemplateViewer->run($args);
-
-if ( exists $args->{static} ) {
-    $app = build_static_path( $app, $args->{static} );
-}
-if ( exists $args->{builder} ) {
-    $app = builder {
-        do $args->{builder};
-        $app;
+{
+    if ( exists $args->{static} ) {
+        $app = build_static_path( $app, $args->{static} );
+    }
+    if ( exists $args->{builder} ) {
+        $app = builder {
+            do $args->{builder};
+            $app;
+        }
     }
 }
 
 my $runner = Plack::Runner->new;
 $runner->parse_options(@plackup_args);
 $runner->run($app);
+
+# subroutine
+
+sub build_static_path {
+    my ( $app, $h ) = @_;
+    while ( my ( $k, $v ) = each %$h ) {
+        $app = Plack::Middleware::Static->wrap( $app, path => qr($k), root => $v );
+    }
+    $app;
+}
+
+sub parse_args {
+    my @args = @_;
+    my @args_pattern
+        = ( 'help|h', 'format|f=s', 'builder|b=s', 'config|c=s', 'data|d=s', 'target|t=s', 'port|p=i', 'static|s=s%', 'w=s', 'init', 'sync!' );
+    my %h = (
+        format => 'tt2',
+        sync   => 1,
+    );
+    if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
+    if ( exists $h{help} ) { pod2usage(1); return; }
+    if ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
+        printf STDERR "%s is not supported\n", $h{format};
+        printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
+        return;
+    }
+
+    # load config
+    my %cfg = {};
+    if ( exists $h{config} ) {
+        _check_file($h{config}) or return;
+        %cfg = %{do delete $h{config}};
+    }
+
+    # set default for template variables
+    {
+        if ( not exists $cfg{tv} ) {
+            $cfg{tv} = {};
+        }
+        map{$cfg{tv}{$_} ||= +{} } App::TemplateViewer->supported_format;
+    }
+
+    # overwrite config by cui args
+    while (my ($k, $v) = each %h) {
+        $cfg{$k} = $v;
+    }
+
+    if ( exists $cfg{builder} ) {
+        _check_file($cfg{builder}) or return;
+    }
+    if ( exists $cfg{static} and 'HASH' eq ref $cfg{static} ) {
+        while ( my ( $k, $v ) = each %{ $cfg{static} } ) {
+            $v = _check_dir($v) or return;
+        }
+    }
+    $cfg{target} ||= getcwd();
+    $cfg{target} = _check_dir($cfg{target}) or return;
+
+    if ( @args > 0 ) {
+        @plackup_args = @args;
+    }
+
+    # TODO temp
+    $cfg{data} ||= '/tmp/templateviewer';
+
+    # output config file
+    if ( exists $cfg{w} ) {
+        $Data::Dumper::Terse = 1;
+        open my $fh, '>', $cfg{w} or die $!;
+        print $fh '+' . Dumper \%cfg;
+        close $fh;
+    }
+
+    # set plackup_args
+    foreach my $k (qw(port)) {
+        if ( exists $cfg{$k} ) {
+            push @plackup_args, "--$k", delete $cfg{$k};
+        }
+    }
+
+    return \%cfg;
+}
+
+sub _check_dir {
+    my $dir = shift;
+    if ( not -d $dir ) {
+        print STDERR "$dir is not directory";
+        return;
+    }
+    return  dir($dir)->absolute->resolve;
+}
+
+sub _check_file {
+    my $file = shift;
+    if ( not -f $file ) {
+        print STDERR "$file is not found";
+        return;
+    }
+    return file($file)->absolute->resolve;
+}
+
 
 __END__
 
@@ -161,6 +198,27 @@ this option can set multiple args.
 this option path to Plack::Middleware::Static like
 
   Plack::Middleware::Static->wrap($app, path => qr(path_info), root => 'path_to_file');
+
+=item B<--config|c> config_file
+
+config file for template viewer. At first, recommend to use 'w' option.
+config format like bellow.
+
+    +{
+        [option_name] => value
+
+        tv => {
+            [template format] => {
+
+            },
+        },
+    }
+
+tv hash ref is handed to template constructor as array (like %{$h->{type}})
+
+=item B<-w> config_output_file
+
+output config file from command line option.
 
 =item B<--builer|b> builder_file
  
