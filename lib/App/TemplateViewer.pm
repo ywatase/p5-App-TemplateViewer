@@ -46,7 +46,7 @@ sub run {
     $app = $app->psgi_app;
 
     if (have_local_static_files()) {
-        $app = Plack::Middleware::Static->wrap($app, path => sub { s|^/template_viewer_static/|| }, root => config_dir()->subdir('static')->stringify);
+        $app = Plack::Middleware::Static->wrap($app, path => sub { s|^/template_viewer_static/|/| }, root => config_dir()->subdir('static')->stringify);
     }
     return $app;
 }

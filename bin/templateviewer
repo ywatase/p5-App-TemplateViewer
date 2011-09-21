@@ -70,24 +70,17 @@ sub parse_args {
     );
     if ( not GetOptionsFromArray( \@args, \%h, @args_pattern ) ) { pod2usage(2); return; }
     if ( exists $h{help} ) { pod2usage(1); return; }
-    if ( not App::TemplateViewer->is_supported_format( $h{format} ) ) {
-        printf STDERR "%s is not supported\n", $h{format};
-        printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
-        return;
-    }
 
     # load config
     my %cfg = ();
     if ( exists $h{config} ) {
-        _check_file($h{config}) or return;
+        _is_file($h{config}) or return;
         %cfg = %{do delete $h{config}};
     }
 
     # set default for template variables
     {
-        if ( not exists $cfg{tv} ) {
-            $cfg{tv} = {};
-        }
+        exists $cfg{tv} or $cfg{tv} = {};
         map{$cfg{tv}{$_} ||= +{} } App::TemplateViewer->supported_format;
     }
 
@@ -96,34 +89,14 @@ sub parse_args {
         $cfg{$k} = $v;
     }
 
-    if ( exists $cfg{builder} ) {
-        _check_file($cfg{builder}) or return;
-    }
-    if ( exists $cfg{static} and 'HASH' eq ref $cfg{static} ) {
-        while ( my ( $k, $v ) = each %{ $cfg{static} } ) {
-            $v = _check_dir($v) or return;
-        }
-    }
-    $cfg{target} ||= getcwd();
-    $cfg{target} = _check_dir($cfg{target}) or return;
+    _check_options(\%cfg) or return;
+    _write_config(\%cfg) if exists $cfg{w};
+    _preprocess_options(\%cfg);
 
+    # set plackup_args
     if ( @args > 0 ) {
         @plackup_args = @args;
     }
-
-    # TODO temp
-    $cfg{data} ||= '/tmp/templateviewer';
-
-    # output config file
-    if ( exists $cfg{w} ) {
-        my $file = delete $cfg{w};
-        $Data::Dumper::Terse = 1;
-        open my $fh, '>', $file or die $!;
-        print $fh '+' . Dumper \%cfg;
-        close $fh;
-    }
-
-    # set plackup_args
     foreach my $k (qw(port)) {
         if ( exists $cfg{$k} ) {
             push @plackup_args, "--$k", delete $cfg{$k};
@@ -133,24 +106,68 @@ sub parse_args {
     return \%cfg;
 }
 
-sub _check_dir {
-    my $dir = shift;
-    if ( not -d $dir ) {
-        print STDERR "$dir is not directory";
+sub _check_options {
+    my ($opts) = @_;
+    if ( not App::TemplateViewer->is_supported_format( $opts->{format} ) ) {
+        printf STDERR "%s is not supported\n", $opts->{format};
+        printf STDERR "supported type : %s\n", join q{ }, App::TemplateViewer->supported_format;
         return;
     }
-    return  dir($dir)->absolute->resolve->stringify;
+    foreach my $k (qw(target) ) {
+        if ( exists $opts->{$k} ) { _is_dir($opts->{$k}) or return; }
+    }
+    foreach my $k (qw(builder config) ) {
+        if ( exists $opts->{$k} ) { _is_file($opts->{$k}) or return; }
+    }
+
+    if ( exists $opts->{static} and 'HASH' eq ref $opts->{static} ) {
+        while ( my ( $k, $v ) = each %{ $opts->{static} } ) {
+            if ( q{/template_viewer_static/} =~ m{$k} ){
+                print STDERR "\nstatic option: '$k=$v' will match '/template_viewer_static/'. recommend write regular expression more correctly\n";
+            }
+            _is_dir($v) or return;
+        }
+    }
+    return 1;
 }
 
-sub _check_file {
-    my $file = shift;
-    if ( not -f $file ) {
-        print STDERR "$file is not found";
+sub _preprocess_options {
+    my ($opts) = @_;
+
+    # set default value
+    $opts->{target} ||= getcwd();
+    $opts->{data}   ||= '/tmp/templateviewer'; # TODO temp
+}
+
+# output config file
+sub _write_config {
+    my ($opts) = @_;
+    my $file = delete $opts->{w};
+    print STDERR "\nconfig : $file is written\n";
+    $Data::Dumper::Terse = 1;
+    open my $fh, '>', $file or die $!;
+    print $fh '+' . Dumper $opts;
+    close $fh;
+}
+
+
+sub _is_dir {
+    my $path = shift;
+    if ( not -d $path ) {
+        print STDERR "$path is not directory";
         return;
     }
-    return file($file)->absolute->resolve->stringify;
+    return 1;
 }
 
+sub _is_file {
+    my $path = shift;
+    if ( not -f $path ) {
+        print STDERR "$path is not found";
+        return;
+    }
+    return 1;
+}
 
 __END__
 
