@@ -77,11 +77,12 @@ sub parse_args {
     }
 
     # load config
-    my %cfg = {};
+    my %cfg = ();
     if ( exists $h{config} ) {
         _check_file($h{config}) or return;
         %cfg = %{do delete $h{config}};
     }
+    use Data::Dumper; warn Dumper \%cfg;
 
     # set default for template variables
     {
@@ -139,7 +140,7 @@ sub _check_dir {
         print STDERR "$dir is not directory";
         return;
     }
-    return  dir($dir)->absolute->resolve;
+    return  dir($dir)->absolute->resolve->stringify;
 }
 
 sub _check_file {
@@ -148,7 +149,7 @@ sub _check_file {
         print STDERR "$file is not found";
         return;
     }
-    return file($file)->absolute->resolve;
+    return file($file)->absolute->resolve->stringify;
 }
 
 
