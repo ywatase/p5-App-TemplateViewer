@@ -1,0 +1,13 @@
+<html>
+<head>
+<title>include test</title>
+</head>
+<body>
+<div>
+<h1>header</h1>
+</div>
+<div>
+[% content %]
+</div>
+</body>
+</html>
