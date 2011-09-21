@@ -116,8 +116,9 @@ sub parse_args {
 
     # output config file
     if ( exists $cfg{w} ) {
+        my $file = delete $cfg{w};
         $Data::Dumper::Terse = 1;
-        open my $fh, '>', $cfg{w} or die $!;
+        open my $fh, '>', $file or die $!;
         print $fh '+' . Dumper \%cfg;
         close $fh;
     }
