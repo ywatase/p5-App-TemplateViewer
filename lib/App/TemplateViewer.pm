@@ -1,5 +1,3 @@
-use YAML::Any;
-
 package App::TemplateViewer;
 use strict;
 use warnings;
@@ -320,7 +318,7 @@ sub run {
 }
 
 package App::TemplateViewer::PollHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 __PACKAGE__->asynchronous(1);
 
 use Tatsumaki::MessageQueue;
@@ -344,7 +342,7 @@ sub on_new_event {
 }
 
 package App::TemplateViewer::RefleshHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 use Encode;
 
 sub get {
@@ -365,7 +363,26 @@ sub get {
 }
 
 package App::TemplateViewer::PreviewHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
+
+# copy from Amon2::Web #TODO
+BEGIN {
+    my $encoding = Encode::find_encoding('utf-8') || die;
+    sub encoding          { $encoding }
+}
+sub uri_for {
+    my ($self, $path, $query) = @_;
+    my $root = $self->request->{env}->{SCRIPT_NAME} || '/';
+    $root =~ s{([^/])$}{$1/};
+    $path =~ s{^/}{};
+    my @q;
+    while (my ($key, $val) = each %$query) {
+        $val = URI::Escape::uri_escape(Encode::encode($self->encoding, $val));
+        push @q, "${key}=${val}";
+    }
+    $root . $path . (scalar @q ? '?' . join('&', @q) : '');
+}
+# // copy from Amon2::Web
 
 sub post {
     my ($self) = @_;
@@ -374,17 +391,26 @@ sub post {
     my $type = $v->{type}   || 'process';
     my $text = $v->{text};
     my $var  = YAML::Any::Load $v->{variables};
-
+    { # TODO
+        no warnings 'redefine';
+        no strict 'refs';
+        *{"Text::Xslate::default_functions"} = sub  {
+            +{
+                c => sub { $self->request },
+                uri_for => sub { $self->uri_for(@_) },
+            };
+        }
+    }
     my $converter
         = $converters->{$fmt}
         ? $converters->{$fmt}->{$type}
         : undef;
     my $content = $converter ? $converter->( $text, $var ) : '';
-    return $self->write( Encode::encode_utf8($content) );
+    return $self->write( Encode::decode_utf8( $content ) );
 }
 
 package App::TemplateViewer::YamlListHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 
 sub post {
     my $self = shift;
@@ -403,7 +429,7 @@ sub post {
 }
 
 package App::TemplateViewer::YamlSenarioListHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 
 sub post {
     my $self = shift;
@@ -425,7 +451,7 @@ sub post {
 }
 
 package App::TemplateViewer::SaveVarsHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 
 use Carp;
 
@@ -459,7 +485,7 @@ sub post {
 }
 
 package App::TemplateViewer::LoadVarsHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 
 sub post {
     my ($self)  = @_;
@@ -489,7 +515,7 @@ sub post {
 }
 
 package App::TemplateViewer::RootHandler;
-use base qw(Tatsumaki::Handler);
+use parent qw(Tatsumaki::Handler);
 
 use Carp;
 use File::Basename;
@@ -990,9 +1016,9 @@ __DATA__
               <button id="tv_menu_tmpl_var_help" class="tv_help">テンプレート変数ツールのヘルプ</button>
               <label for="yaml_path">ファイル</label><input type="text" name="yaml_path" id="yaml_path">
               <label for="yaml_senario">ケース</label><input type="text" name="yaml_senario" id="yaml_senario">
-              <input type="button" id="cmd_save_variables" value="YAMLを保存する">
-              <input type="button" id="cmd_load_variables" value="YAMLを読み込む">
-              <input type="button" id="cmd_apply_variables" value="変数を適用する">
+              <input type="button" id="cmd_save_variables" value="保存">
+              <input type="button" id="cmd_load_variables" value="読込">
+              <input type="button" id="cmd_apply_variables" value="適用">
               <label for="yaml_auto_load">自動読込</label><input type="checkbox" name="yaml_auto_load" id="yaml_auto_load" checked="checked" value="1">
             </div>
             <textarea id="variables"></textarea>
